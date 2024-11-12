@@ -1,0 +1,14 @@
+jupyterlab
+opencv-python
+numpy==1.21.6
+#cython
+rosdep
+rosinstall
+vcstools
+rospkg
+pandas
+scipy
+tqdm
+#faiss-cpu
+timm
+scikit-learn

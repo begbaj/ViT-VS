@@ -1,0 +1,35 @@
+u_max: 224
+v_max: 224
+lambda_: 0.05
+min_error: 100
+max_error: 70000
+f_x: 240.18466186523438
+f_y: 240.18466186523438
+num_pairs: 18
+image_path: 'goalrgb.jpg'
+max_velocity: 1.0
+
+# DINO feature detection parameters
+background_thresh: 0.005
+thresh_filter_keypoints: 1
+
+# Sampling parameters
+num_samples: 4
+num_circles: 4
+circle_radius_aug: 0.08
+
+# Convergence parameters
+velocity_convergence_threshold: 0.00008
+velocity_threshold_translation: 0.0000000000000000005
+velocity_threshold_rotation: 0.0000000000000000005
+error_threshold_ratio: 0.001
+error_threshold_absolute_translation: 0.1
+error_threshold_absolute_rotation: 0.1
+
+# Iteration control
+min_iterations: 400
+max_iterations: 4000
+
+# Velocity history for creating velocity mean
+max_velocity_vector_history: 200
+ema_alpha: 0.7
