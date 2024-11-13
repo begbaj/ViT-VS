@@ -1,4 +1,4 @@
-# VitVS: Vision Transformer-based Visual Servoing
+# VitVS: Zero-shot ViT features for Visual Servoing
 
 ## Overview
 A repository implementing Image Based Visual Servoing (IBVS) that combines:
