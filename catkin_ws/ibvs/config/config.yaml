@@ -12,7 +12,6 @@ max_velocity: 1.0
 
 # DINO feature detection parameters
 dino_input_size: 308
-background_thresh: 0.005
 thresh_filter_keypoints: 1
 use_feature_binning: false  # Add this line
 
@@ -33,7 +32,6 @@ error_threshold_absolute_rotation: 0.1
 min_iterations: 400
 max_iterations: 4000
 
-# Velocity history for creating velocity mean
-max_velocity_vector_history: 200
+# velocity smoothing parameter
 ema_alpha: 0.7
 
