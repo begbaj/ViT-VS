@@ -33,7 +33,6 @@
         name="gazebo_vel_broadcaster"
         pkg="gazebo_vel_broadcaster"
         type="gazebo_vel_broadcaster.py"
-        output="screen"
         launch-prefix="bash -c 'sleep 2; $0 $@'"
     />
 
