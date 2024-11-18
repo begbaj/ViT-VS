@@ -24,6 +24,7 @@ A repository implementing Image Based Visual Servoing (IBVS) that combines:
 1. **Clone the repository**
    ```bash
    git clone https://github.com/AlessandroScherl/VitVS.git
+   ```
    
 2. **Configure GPU support (optional)**
   - To disable GPU support, comment out the GPU version and enable the non-GPU in buildandrun.sh
@@ -31,11 +32,13 @@ A repository implementing Image Based Visual Servoing (IBVS) that combines:
 3. **Build and run Docker container**
    ```bash
    ./buildandrun.sh
+   ```
 4. **Inside the Docker container:**
    ```bash
    catkin_make
    cd catkin_ws/src/ibvs/src
    ./run_ibvs.sh
+   ```
 At this point:
 
 - Gazebo and RViz should start
@@ -43,10 +46,16 @@ At this point:
 - Simulation runs according to the config file in catkin_ws/ibvs/config
 
 ## Additional Configuration
+To run the Visual Servoing with SIFT+BF corresponding matching:
+   ```bash
+   catkin_make
+   cd catkin_ws/src/ibvs/src
+   ./run_sift.sh
+```
 To enable Gazebo GUI:
 - Open catkin_ws/ibvs/launch/ibvs.launch
 - Set the argument "gui" to true
 
 Connecting another shell to the docker container:
-```
-docker exec -ti viso bash
+```bash
+   docker exec -ti viso bash
