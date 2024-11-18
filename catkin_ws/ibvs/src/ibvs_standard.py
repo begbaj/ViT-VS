@@ -12,14 +12,8 @@ from scipy.spatial.transform import Rotation as R
 from scipy import stats
 
 # Deep learning & vision
-import torch
-from torch import nn
-import torch.nn.modules.utils as nn_utils
-import torch.nn.functional as F
-import timm
 import cv2
 from PIL import Image
-from torchvision import transforms
 
 # Visualization
 import matplotlib
@@ -41,104 +35,6 @@ import argparse
 import tf2_ros
 import tf_conversions
 
-# import VIT Extractor dinov2
-from dinov2_extractor import ViTExtractor
-
-
-
-def chunk_cosine_sim(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
-    """Computes cosine similarity between all possible pairs in two sets of vectors."""
-    result_list = []
-    num_token_x = x.shape[2]
-    for token_idx in range(num_token_x):
-        token = x[:, :, token_idx, :].unsqueeze(dim=2)  # Bx1x1xd'
-        result_list.append(torch.nn.CosineSimilarity(dim=3)(token, y))  # Bx1xt
-    return torch.stack(result_list, dim=2)  # Bx1x(t_x)x(t_y)
-
-def _to_cartesian(coords, shape):
-    """Takes raveled coordinates and returns them in a cartesian coordinate frame"""
-    if torch.is_tensor(coords):
-        coords = coords.long()
-
-    # Calculate rows and columns for all indices
-    width = shape[1]
-    rows = coords // width
-    cols = coords % width
-
-    # Stack coordinates
-    result = torch.stack([rows, cols], dim=-1)
-    return result
-
-def find_correspondences_batch(descriptors1, descriptors2, num_pairs=18, distance_threshold=1):
-    """Find correspondences between two images using their descriptors."""
-    B, _, t_m_1, d_h = descriptors1.size()
-    num_patches = (int(np.sqrt(t_m_1)), int(np.sqrt(t_m_1)))
-
-    # Calculate similarities
-    similarities = chunk_cosine_sim(descriptors1, descriptors2)
-
-    sim_1, nn_1 = torch.max(similarities, dim=-1)
-    sim_2, nn_2 = torch.max(similarities, dim=-2)
-
-    # Check if we're dealing with the same image
-    is_same_image = sim_1.mean().item() > 0.99
-
-    if is_same_image:
-        # For same image, take random points
-        num_points = min(num_pairs, t_m_1)
-        perm = torch.randperm(t_m_1, device=descriptors1.device)
-        indices = perm[:num_points]
-        points1 = _to_cartesian(indices, num_patches)
-        points2 = points1.clone()  # Same points for same image
-        sim_scores = torch.ones(num_points, device=descriptors1.device)
-        return points1, points2, sim_scores
-
-    else:
-        nn_1, nn_2 = nn_1[:, 0, :], nn_2[:, 0, :]
-        cyclical_idxs = torch.gather(nn_2, dim=-1, index=nn_1)
-
-        image_idxs = torch.arange(t_m_1, device=descriptors1.device)[None, :].repeat(B, 1)
-        cyclical_idxs_ij = _to_cartesian(cyclical_idxs, shape=num_patches)
-        image_idxs_ij = _to_cartesian(image_idxs, shape=num_patches)
-
-        b, hw, ij_dim = cyclical_idxs_ij.size()
-        cyclical_dists = -torch.nn.PairwiseDistance(p=2)(
-            cyclical_idxs_ij.view(-1, ij_dim),
-            image_idxs_ij.view(-1, ij_dim)
-        ).view(b, hw)
-
-        cyclical_dists_norm = cyclical_dists - cyclical_dists.min(1, keepdim=True)[0]
-        cyclical_dists_norm /= (cyclical_dists_norm.max(1, keepdim=True)[0] + 1e-8)
-
-        sorted_vals, selected_points_image_1 = cyclical_dists_norm.sort(dim=-1, descending=True)
-
-        mask = sorted_vals >= distance_threshold
-        filtered_points = selected_points_image_1[mask]
-
-        num_available = filtered_points.numel()
-        num_to_select = min(num_pairs, num_available)
-
-        if num_to_select > 0:
-            perm = torch.randperm(num_available, device=descriptors1.device)
-            selected_indices = perm[:num_to_select]
-            selected_points_image_1 = filtered_points[selected_indices].unsqueeze(0)
-
-            selected_points_image_2 = torch.gather(nn_1, dim=-1, index=selected_points_image_1)
-            sim_selected_12 = torch.gather(sim_1[:, 0, :], dim=-1, index=selected_points_image_1)
-
-            points1 = _to_cartesian(selected_points_image_1[0], num_patches)
-            points2 = _to_cartesian(selected_points_image_2[0], num_patches)
-
-            return points1, points2, sim_selected_12
-        else:
-            return None, None, None
-
-
-def scale_points_from_patch(points, vit_image_size=518, num_patches=37):
-    """Scale points from patch coordinates to pixel coordinates"""
-    points = (points + 0.5) / num_patches * vit_image_size
-    return points
-
 
 def visualize_correspondences(image1, image2, points1, points2, save_path=None):
     """Visualize correspondences between two images."""
@@ -147,10 +43,8 @@ def visualize_correspondences(image1, image2, points1, points2, save_path=None):
     if isinstance(image2, Image.Image):
         image2 = np.array(image2)
 
-    if torch.is_tensor(points1):
-        points1 = points1.cpu().detach().numpy()
-    if torch.is_tensor(points2):
-        points2 = points2.cpu().detach().numpy()
+    points1 = np.array(points1)
+    points2 = np.array(points2)
 
     fig = plt.figure(figsize=(12, 6))
     ax1 = fig.add_subplot(121)
@@ -184,10 +78,12 @@ def visualize_correspondences(image1, image2, points1, points2, save_path=None):
     return fig
 
 class Controller:
-    def __init__(self, desired_position, desired_orientation, config_path):
+    def __init__(self, desired_position, desired_orientation, config_path, method='sift'):
+        self.method = method.lower()
         self.config_path = config_path
         # Load parameters from YAML
         self.load_parameters()
+
 
         # Processing variables
         self.latest_image = None
@@ -220,9 +116,6 @@ class Controller:
         self.applied_velocity_pitch = []
         self.applied_velocity_yaw = []
 
-        # Initialize DINOv2 settings
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.desc = ViTExtractor('dinov2_vits14', stride=14, device=self.device)
 
         # Initialize EMA for velocity smoothing
         self.initialize_ema()
@@ -264,11 +157,6 @@ class Controller:
         self.max_error = config['max_error']
         self.num_pairs = config['num_pairs']  # Number of feature pairs to track
 
-        # DINO feature detection parameters
-        self.thresh_filter_keypoints = config['thresh_filter_keypoints']
-        self.dino_input_size = config['dino_input_size']
-        self.use_feature_binning = config['use_feature_binning']
-
         # Sampling parameters
         self.num_samples = config['num_samples']
         self.num_circles = config['num_circles']
@@ -285,6 +173,9 @@ class Controller:
         # Iteration control
         self.min_iterations = config['min_iterations']
         self.max_iterations = config['max_iterations']
+
+        # this is processing resolution
+        self.dino_input_size = config['dino_input_size']
 
         # EMA parameter
         self.ema_alpha = config.get('ema_alpha', 0.1)
@@ -419,7 +310,7 @@ class Controller:
         self.latest_image_depth = self.bridge.imgmsg_to_cv2(msg, desired_encoding="passthrough")
 
     def detect_features(self):
-        """Detect features using SIFT."""
+        """Detect features using the specified method (SIFT, ORB, or AKAZE)."""
         if self.latest_image is None:
             return None, None
 
@@ -431,22 +322,54 @@ class Controller:
         goal_gray = cv2.cvtColor(goal_image_resized, cv2.COLOR_RGB2GRAY)
         current_gray = cv2.cvtColor(current_image_resized, cv2.COLOR_RGB2GRAY)
 
-        # Initialize SIFT detector
-        sift = cv2.SIFT_create()
+        # Initialize detector based on method
+        if self.method == 'sift':
+            detector = cv2.SIFT_create()
+            norm_type = cv2.NORM_L2
+        elif self.method == 'orb':
+            detector = cv2.ORB_create(nfeatures=1000)
+            norm_type = cv2.NORM_HAMMING
+        elif self.method == 'akaze':
+            detector = cv2.AKAZE_create()
+            norm_type = cv2.NORM_HAMMING
+        else:
+            rospy.logerr(f"Unknown feature detection method: {self.method}")
+            return None, None
 
         # Detect and compute keypoints and descriptors
-        kp1, des1 = sift.detectAndCompute(goal_gray, None)
-        kp2, des2 = sift.detectAndCompute(current_gray, None)
+        kp1, des1 = detector.detectAndCompute(goal_gray, None)
+        kp2, des2 = detector.detectAndCompute(current_gray, None)
+
+        rospy.loginfo(
+            f"{self.method.upper()} found {len(kp1)} keypoints in goal image and {len(kp2)} keypoints in current image")
 
         if des1 is None or des2 is None or len(kp1) < self.num_pairs or len(kp2) < self.num_pairs:
             return None, None
 
-        # Initialize BF matcher with crosscheck for better matches
-        bf = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+        # Initialize BF matcher with appropriate norm type
+        bf = cv2.BFMatcher(norm_type, crossCheck=True)
         matches = bf.match(des1, des2)
 
-        # Sort matches by distance (smaller distance = better match)
+        # Get all distances
+        distances = np.array([m.distance for m in matches])
+
+        # Normalize and invert distances to [0,1] range where 1 is best match
+        min_dist = np.min(distances)
+        max_dist = np.max(distances)
+        normalized_distances = 1 - (distances - min_dist) / (max_dist - min_dist)
+
+        # Print statistics
+        rospy.loginfo(f"Total matches found: {len(matches)}")
+        rospy.loginfo(f"Normalized distances - Mean: {np.mean(normalized_distances):.3f}, "
+                      f"Median: {np.median(normalized_distances):.3f}")
+
+        # Sort matches by distance
         matches = sorted(matches, key=lambda x: x.distance)
+
+        # Print normalized distances for top matches
+        top_normalized = normalized_distances[np.argsort(distances)][:self.num_pairs]
+        rospy.loginfo(f"Top {self.num_pairs} normalized distances (1=best, 0=worst): "
+                      f"{', '.join([f'{d:.3f}' for d in top_normalized])}")
 
         # Select top num_pairs matches
         matches = matches[:self.num_pairs]
@@ -459,11 +382,11 @@ class Controller:
         self.visualize_correspondences_with_lines(
             goal_image_resized,
             current_image_resized,
-            torch.from_numpy(points1),
-            torch.from_numpy(points2)
+            points1,
+            points2
         )
 
-        return self.calculate_uv(points1.tolist(), points2.tolist()), None  # Return None for similarity scores
+        return self.calculate_uv(points1.tolist(), points2.tolist()), None
 
     def calculate_uv(self, goal_features, current_features):
         """Calculate feature points and scale them to the real image resolution."""
@@ -749,8 +672,8 @@ class Controller:
         ax2.imshow(current_image)
 
         # Convert points to numpy if they're tensors
-        points1_np = points1.cpu().numpy() if torch.is_tensor(points1) else np.array(points1)
-        points2_np = points2.cpu().numpy() if torch.is_tensor(points2) else np.array(points2)
+        points1_np = np.array(points1)
+        points2_np = np.array(points2)
 
         # Plot correspondences with rainbow colors
         colors = plt.cm.rainbow(np.linspace(0, 1, len(points1_np)))
@@ -812,12 +735,6 @@ class Controller:
             rospy.logerr(f"Failed to get camera pose: {e}")
             return None, None
 
-def scale_points_direct(points, target_size, num_patches):
-    """Scale points from patch coordinates to pixel coordinates"""
-    scale = target_size / num_patches
-    scaled_points = points * scale + scale/2
-    scaled_points = torch.clamp(scaled_points, 0, target_size-1)
-    return scaled_points
 
 def sample_camera_positions(volume_dimensions, num_samples, desired_position):
     """
@@ -1299,7 +1216,7 @@ def main(args):
     look_at_matrices, orientations = calculate_look_at_orientation(camera_positions, focal_points)
 
     # Initialize controller
-    controller = Controller(desired_position, desired_orientation, config_path)
+    controller = Controller(desired_position, desired_orientation, config_path, method=args.method)
 
     # Run visual servoing for each sample
     for i in range(config['num_samples']):
@@ -1384,6 +1301,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Visual Servoing Inference")
     parser.add_argument("--config", type=str, help="Name of the configuration YAML file")
     parser.add_argument("--perturbation", action="store_true", help="Enable image perturbation")
+    parser.add_argument("--method", type=str, choices=['sift', 'orb', 'akaze'], default='sift',
+                        help="Feature detection method to use (sift, orb, or akaze)")
     args = parser.parse_args()
 
     main(args)
