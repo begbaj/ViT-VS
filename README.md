@@ -39,13 +39,13 @@ A repository implementing Image Based Visual Servoing (IBVS) that combines:
    cd catkin_ws/src/ibvs/src
    ```
 
-Then the visual servoing system can be run with different feature detection methods using a single unified script. Here are the available options:
+5. Then the visual servoing system can be run with different feature detection methods using a single unified script. Here are the available options:
 
 ```bash
 ./run_ibvs.sh --method  [--config ] [--perturbation]
 ```
 
-### Arguments:
+#### Arguments:
 
 - `--method`: Specify the feature detection method (required)
   - Options: `sift`, `orb`, `akaze`, `dino`
@@ -54,24 +54,24 @@ Then the visual servoing system can be run with different feature detection meth
 - `--perturbation`: Enable perturbation mode (optional)
   - Adds image perturbation during visual servoing
 
-### Examples:
+#### Examples:
 
-1. Run with SIFT feature detection:
+Run with SIFT feature detection:
 ```bash
 ./run_ibvs.sh --method sift
 ```
 
-2. Run with ORB and perturbation:
+Run with ORB and perturbation:
 ```bash
 ./run_ibvs.sh --method orb --perturbation
 ```
 
-3. Run DINOv2 with a custom config:
+Run DINOv2 with a custom config:
 ```bash
 ./run_ibvs.sh --method dino --config custom_config.yaml
 ```
 
-4. Run AKAZE with all options:
+Run AKAZE with all options:
 ```bash
 ./run_ibvs.sh --method akaze --config custom_config.yaml --perturbation
 ```
