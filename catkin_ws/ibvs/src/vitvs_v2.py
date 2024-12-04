@@ -86,46 +86,67 @@ def find_correspondences_batch(descriptors1, descriptors2, num_pairs=18, distanc
     if is_same_image:
         # For same image, take random points
         num_points = min(num_pairs, t_m_1)
+
+        # Generate random indices
         perm = torch.randperm(t_m_1, device=descriptors1.device)
         indices = perm[:num_points]
+
+        # Convert to coordinates
         points1 = _to_cartesian(indices, num_patches)
         points2 = points1.clone()  # Same points for same image
+
+        # Get similarity scores (should all be 1.0)
         sim_scores = torch.ones(num_points, device=descriptors1.device)
+
         return points1, points2, sim_scores
 
     else:
+        # Original logic for different images
         nn_1, nn_2 = nn_1[:, 0, :], nn_2[:, 0, :]
         cyclical_idxs = torch.gather(nn_2, dim=-1, index=nn_1)
 
+        # Create image indices
         image_idxs = torch.arange(t_m_1, device=descriptors1.device)[None, :].repeat(B, 1)
+
+        # Convert to cartesian coordinates
         cyclical_idxs_ij = _to_cartesian(cyclical_idxs, shape=num_patches)
         image_idxs_ij = _to_cartesian(image_idxs, shape=num_patches)
 
+        # Calculate distances
         b, hw, ij_dim = cyclical_idxs_ij.size()
         cyclical_dists = -torch.nn.PairwiseDistance(p=2)(
             cyclical_idxs_ij.view(-1, ij_dim),
             image_idxs_ij.view(-1, ij_dim)
         ).view(b, hw)
 
+        # Normalize distances
         cyclical_dists_norm = cyclical_dists - cyclical_dists.min(1, keepdim=True)[0]
-        cyclical_dists_norm /= (cyclical_dists_norm.max(1, keepdim=True)[0] + 1e-8)
+        cyclical_dists_norm /= (cyclical_dists_norm.max(1, keepdim=True)[0] + 1e-8)  # Add small epsilon
 
+        # Sort values and get selected points
         sorted_vals, selected_points_image_1 = cyclical_dists_norm.sort(dim=-1, descending=True)
 
+        # Filter points based on distance
         mask = sorted_vals >= distance_threshold
         filtered_points = selected_points_image_1[mask]
 
+        # Select points
         num_available = filtered_points.numel()
         num_to_select = min(num_pairs, num_available)
+
 
         if num_to_select > 0:
             perm = torch.randperm(num_available, device=descriptors1.device)
             selected_indices = perm[:num_to_select]
             selected_points_image_1 = filtered_points[selected_indices].unsqueeze(0)
 
+            # Get corresponding points in image 2
             selected_points_image_2 = torch.gather(nn_1, dim=-1, index=selected_points_image_1)
+
+            # Get similarity scores
             sim_selected_12 = torch.gather(sim_1[:, 0, :], dim=-1, index=selected_points_image_1)
 
+            # Convert to coordinates
             points1 = _to_cartesian(selected_points_image_1[0], num_patches)
             points2 = _to_cartesian(selected_points_image_2[0], num_patches)
 
@@ -211,6 +232,10 @@ class Controller:
         self.velocity_mean_100 = []
         self.velocity_mean_10 = []
         self.average_velocities = []
+        self.velocity_vector_history = []  # New
+        self.initial_error_translation = None  # New
+        self.initial_error_rotation = None  # New
+        self.feature_failure_count = 0  # New
 
         # Velocity tracking
         self.applied_velocity_x = []
@@ -254,20 +279,21 @@ class Controller:
         self.v_max = config['v_max']  # Image height
         self.f_x = config['f_x']  # Focal length x
         self.f_y = config['f_y']  # Focal length y
-        self.c_x = self.u_max / 2  # Principal point x ONLY VALID FOR SIMULATION
-        self.c_y = self.v_max / 2  # Principal point y ONLY VALID FOR SIMULATION
+        self.c_x = self.u_max / 2  # Principal point x
+        self.c_y = self.v_max / 2  # Principal point y
 
         # Control parameters
         self.lambda_ = config['lambda_']  # Control gain
         self.max_velocity = config.get('max_velocity', 1.0)
         self.min_error = config['min_error']
         self.max_error = config['max_error']
-        self.num_pairs = config['num_pairs']  # Number of feature pairs to track
+        self.num_pairs = config['num_pairs']
 
         # DINO feature detection parameters
         self.thresh_filter_keypoints = config['thresh_filter_keypoints']
         self.dino_input_size = config['dino_input_size']
         self.use_feature_binning = config['use_feature_binning']
+        self.background_thresh = config.get('background_thresh', 0.5)  # New
 
         # Sampling parameters
         self.num_samples = config['num_samples']
@@ -289,6 +315,9 @@ class Controller:
         # EMA parameter
         self.ema_alpha = config.get('ema_alpha', 0.1)
 
+        # Velocity history
+        self.max_velocity_vector_history = config.get('max_velocity_vector_history', 200)  # New
+
         # Set the image path
         current_directory = os.path.dirname(__file__)
         self.image_path = os.path.join(current_directory, config['image_path'])
@@ -298,7 +327,15 @@ class Controller:
         self.ema_velocities = [None] * 6
 
     def update_ema(self, index, new_value):
-        """Update EMA for a single velocity component."""
+        """
+        Update EMA for a single velocity component.
+
+        Args:
+            index (int): Index of the velocity component
+            new_value (float): New velocity value
+        Returns:
+            float: Updated EMA value
+        """
         if self.ema_velocities[index] is None:
             self.ema_velocities[index] = new_value
         else:
@@ -306,76 +343,82 @@ class Controller:
         return self.ema_velocities[index]
 
     def is_visual_servoing_done(self):
-        """Check if visual servoing has converged or should stop."""
-        window_size = 100  # Window for calculating velocity_mean_100
-        trend_window = 200  # Window for analyzing the trend
-
-        # Check minimum iterations
-        if self.iteration_count < self.min_iterations:
+        """Check if visual servoing should stop based on error and velocity criteria"""
+        if self.iteration_count < 300:  # Wait at least 300 iterations
             return False, False
 
-        # Calculate current velocity mean
-        current_velocity_mean = np.mean(np.abs(self.v_c))
-        self.velocity_history.append(current_velocity_mean)
-
-        # Calculate mean velocity for the window
-        velocity_mean_100 = np.mean(self.velocity_history[-window_size:]) if len(
-            self.velocity_history) >= window_size else None
-
-        # Calculate current errors
+        # Get current errors
         current_error_translation, current_error_rotation = self.calculate_end_error(self.desired_orientation)
 
-        # Check if current error is more than twice the initial error
-        if current_error_translation > 2 * self.initial_position_error:
-            rospy.logerr("Position error exceeds twice the initial error. Aborting.")
-            return True, False
+        # Initialize initial errors if not already done
+        if not hasattr(self, 'initial_error_translation'):
+            self.initial_error_translation, self.initial_error_rotation = self.calculate_end_error(
+                self.desired_orientation)
 
-        if velocity_mean_100 is not None:
-            self.velocity_mean_history.append(velocity_mean_100)
+        # Check if current error is more than twice the initial error (divergence check)
+        if current_error_translation > 2 * self.initial_error_translation:
+            rospy.logerr("Aborting sample due to position error exceeding twice the initial error.")
+            return True, False  # Done but not converged
 
-            # Check if we have enough data to analyze trend
-            if len(self.velocity_mean_history) >= trend_window:
-                trend_increasing, _ = detect_trend(self.velocity_mean_history[-trend_window:])
+        # Error-based convergence checks
+        error_reduced_90_percent = ((current_error_translation / self.initial_error_translation) < 0.1 and
+                                    (current_error_rotation / self.initial_error_rotation) < 0.1)
 
-                if trend_increasing:
-                    error_reduced = (current_error_translation <= self.target_error_translation) and \
-                                    (current_error_rotation <= self.target_error_rotation)
-                    if error_reduced:
-                        rospy.loginfo("Error reduction achieved. Stopping.")
-                        return True, True
+        error_below_absolute = (current_error_translation < 0.01 and  # 1cm
+                                current_error_rotation < 1.0)  # 1 degree
 
-        # Check convergence criteria
-        velocity_below_threshold = velocity_mean_100 is not None and \
-                                   velocity_mean_100 < self.velocity_convergence_threshold
-        error_reduced = (current_error_translation <= self.target_error_translation) and \
-                        (current_error_rotation <= self.target_error_rotation)
+        error_converged = error_reduced_90_percent or error_below_absolute
 
-        # Print status every 250 iterations
-        if self.iteration_count % 250 == 0:
-            rospy.logwarn(f"Translation error: {current_error_translation:.4f} cm "
-                          f"(target: {self.target_error_translation:.4f} cm)")
-            rospy.logwarn(f"Rotation error: {current_error_rotation:.4f} degrees "
-                          f"(target: {self.target_error_rotation:.4f} degrees)")
-            if velocity_mean_100 is not None:
-                rospy.loginfo(f"Mean velocity (100 iterations): {velocity_mean_100:.6f}")
+        # Velocity-based stopping check with sliding windows
+        if len(self.velocity_vector_history) >= 200:  # Need 200 samples for two windows
+            recent_velocities = np.array(self.velocity_vector_history[-200:])
 
-        converged = error_reduced and velocity_below_threshold
+            # Split into two 100-sample windows
+            first_window = recent_velocities[:100]
+            second_window = recent_velocities[100:]
 
-        # Check maximum iterations
+            # Calculate means for both windows
+            first_trans_velocities = np.linalg.norm(first_window[:, :3] * 1000.0, axis=1)  # mm/s
+            first_rot_velocities = np.linalg.norm(np.degrees(first_window[:, 3:]), axis=1)  # deg/s
+
+            second_trans_velocities = np.linalg.norm(second_window[:, :3] * 1000.0, axis=1)
+            second_rot_velocities = np.linalg.norm(np.degrees(second_window[:, 3:]), axis=1)
+
+            first_trans_mean = np.mean(first_trans_velocities)
+            first_rot_mean = np.mean(first_rot_velocities)
+            second_trans_mean = np.mean(second_trans_velocities)
+            second_rot_mean = np.mean(second_rot_velocities)
+
+            # Print velocity information every 50 iterations
+            if self.iteration_count % 50 == 0:
+                rospy.loginfo(f"\nVelocity Analysis (last 200 iterations):")
+                rospy.loginfo(f"First window translation mean (mm/s): {first_trans_mean:.6f}")
+                rospy.loginfo(f"Second window translation mean (mm/s): {second_trans_mean:.6f}")
+                rospy.loginfo(f"First window rotation mean (deg/s): {first_rot_mean:.6f}")
+                rospy.loginfo(f"Second window rotation mean (deg/s): {second_rot_mean:.6f}")
+
+            # Check convergence conditions
+            if first_trans_mean < 1.0 and first_rot_mean < 0.1:
+                if second_trans_mean > first_trans_mean and second_rot_mean > first_rot_mean:
+                    rospy.loginfo("Velocity trend indicates convergence - checking final error")
+                    return True, error_reduced_90_percent
+
+        # Print current errors periodically
+        if self.iteration_count % 50 == 0:
+            rospy.loginfo(f"Current translation error: {current_error_translation:.4f} cm")
+            rospy.loginfo(f"Current rotation error: {current_error_rotation:.4f} degrees")
+
+        # Check if maximum iterations reached
         if self.iteration_count >= self.max_iterations:
-            target_error_translation_90 = self.initial_error_translation * 0.1
-            target_error_rotation_90 = self.initial_error_rotation * 0.1
-            error_reduced_90_percent = (current_error_translation <= target_error_translation_90) and \
-                                       (current_error_rotation <= target_error_rotation_90)
-
+            rospy.loginfo("Maximum iterations reached")
             if error_reduced_90_percent:
-                rospy.logwarn("Max iterations reached with 90% error reduction. Marking as converged.")
+                rospy.logwarn("Maximum iterations reached with 90% error reduction. Marking as converged.")
                 return True, True
             else:
-                rospy.logwarn("Max iterations reached without sufficient error reduction.")
+                rospy.logwarn("Maximum iterations reached without sufficient error reduction.")
                 return True, False
 
-        return converged, converged
+        return False, False
 
     def setup_ros_communication(self):
         """Setup ROS publishers and subscribers."""
@@ -423,6 +466,10 @@ class Controller:
         if self.latest_image is None:
             return None, None
 
+        # Add counter for consecutive failures
+        if not hasattr(self, 'feature_failure_count'):
+            self.feature_failure_count = 0
+
         # Resize images to DINOv2's input size
         goal_image_resized = self.goal_image.resize((self.dino_input_size, self.dino_input_size))
         current_image_resized = self.latest_pil_image.resize((self.dino_input_size, self.dino_input_size))
@@ -444,19 +491,26 @@ class Controller:
                 facet='token',
                 bin=self.use_feature_binning
             )
-            # Find correspondences
+
             points1, points2, sim_selected_12 = find_correspondences_batch(
                 desc1, desc2,
                 num_pairs=self.num_pairs
             )
 
             if points1 is None or points2 is None:
+                self.feature_failure_count += 1
+                if self.feature_failure_count >= 10:
+                    rospy.logerr("Feature detection failed 10 times in a row - aborting sample")
+                    raise RuntimeError("Persistent feature detection failure")
                 return None, None
+
+            # Reset counter on successful detection
+            self.feature_failure_count = 0
 
             # Scale points
             scale = self.dino_input_size / int(np.sqrt(desc1.size(-2)))
-            points1_scaled = points1 * scale + scale / 2  # goal points
-            points2_scaled = points2 * scale + scale / 2  # current points
+            points1_scaled = points1 * scale + scale / 2
+            points2_scaled = points2 * scale + scale / 2
 
             # Visualize correspondences
             self.visualize_correspondences_with_lines(
@@ -534,14 +588,20 @@ class Controller:
     def ibvs(self):
         """Image Based Visual Servoing Method."""
         if self.latest_image is None:
-            print("No latest image available")
+            print("NO LATEST IMAGE SKIPPING")
             return
 
         start_time = time.time()
 
-        (s_uv_star, s_uv), _ = self.detect_features()
-        if s_uv_star is None or s_uv is None:
-            print("Feature detection failed")
+        # Get features with error handling
+        result = self.detect_features()
+        if result is None or result[0] is None:
+            rospy.logwarn("Feature detection failed - skipping this iteration")
+            return
+
+        (s_uv_star, s_uv), sim_selected_12 = result
+        if s_uv_star is None or s_uv is None or len(s_uv_star) < 4:  # Minimum 4 points needed
+            rospy.logwarn("Insufficient features detected - skipping this iteration")
             return
 
         self.draw_points(np.array(self.latest_pil_image), s_uv, s_uv_star)
@@ -554,16 +614,22 @@ class Controller:
         e = e.reshape((len(s_xy) * 2, 1))
 
         Z = self.get_depth(s_uv)
+        if Z is None:
+            rospy.logwarn("Failed to get depth - skipping this iteration")
+            return
+
         L = self.calculate_interaction_matrix(s_xy, Z)
-
-        # Calculate camera velocities using control law
         v_c = -self.lambda_ * np.linalg.pinv(L.astype('float')) @ e
-
-        # Update EMA for each velocity component
         self.v_c = np.array([self.update_ema(i, v) for i, v in enumerate(v_c.flatten())])
 
+        # Store velocity history
+        self.velocity_vector_history.append(self.v_c)
+        if len(self.velocity_vector_history) > self.max_velocity_vector_history:
+            self.velocity_vector_history.pop(0)
+
         end_time = time.time()
-        print(f"IBVS iteration executed in: {end_time - start_time:.2f} seconds ||| iteration count: {self.iteration_count}")
+        execution_time = end_time - start_time
+        print(f"Script executed in: {execution_time:.2f} seconds ||| iteration count: {self.iteration_count}")
 
     def transform_to_real_world(self, s_uv, s_uv_star):
         """Transform pixel feature points to real-world coordinates."""
@@ -593,10 +659,15 @@ class Controller:
         return L
 
     def publish_twist(self, v_c):
-        """Publish velocity commands and store history."""
+        """
+        Publish velocity commands and store history.
+
+        Args:
+            v_c (numpy.ndarray): Camera velocity vector
+        """
         twist_msg = Twist()
 
-        # Apply velocity limits
+        # Apply velocity limits with EMA smoothing
         twist_msg.linear.x = np.clip(v_c[2], -self.max_velocity, self.max_velocity)
         twist_msg.linear.y = np.clip(-v_c[0], -self.max_velocity, self.max_velocity)
         twist_msg.linear.z = np.clip(-v_c[1], -self.max_velocity, self.max_velocity)
@@ -612,6 +683,7 @@ class Controller:
         self.applied_velocity_pitch.append(twist_msg.angular.y)
         self.applied_velocity_yaw.append(twist_msg.angular.z)
 
+        # Warning for velocity capping
         if np.any(np.abs(v_c) > self.max_velocity):
             rospy.logwarn("Velocity capped due to exceeding maximum allowed value.")
 
@@ -630,107 +702,134 @@ class Controller:
     def run(self):
         """Main visual servoing control loop."""
         rospy.loginfo("Starting visual servoing process...")
-        self.iteration_count = 0
 
-        # Initialize histories
+        # Reset all tracking variables
+        self.iteration_count = 0
+        self.velocity_vector_history = []
         self.position_history = []
         self.orientation_history = []
         self.velocity_history = []
         self.average_velocities = []
         self.velocity_mean_100 = []
         self.velocity_mean_10 = []
-
-        # Initialize velocity tracking
         self.applied_velocity_x = []
         self.applied_velocity_y = []
         self.applied_velocity_z = []
         self.applied_velocity_roll = []
         self.applied_velocity_pitch = []
         self.applied_velocity_yaw = []
+        self.feature_failure_count = 0
 
-        # Initialize tracking variables
+        # Get initial camera pose and calculate initial errors
+        self.camera_position, self.orientation_quaternion = self.get_current_camera_pose()
+        if self.camera_position is None or self.orientation_quaternion is None:
+            rospy.logerr("Failed to get initial camera pose")
+            return None
+
+        if self.initial_error_translation is None:
+            self.initial_error_translation, self.initial_error_rotation = self.calculate_end_error(
+                self.desired_orientation)
+            rospy.loginfo(f"Initial translation error: {self.initial_error_translation:.4f} cm")
+            rospy.loginfo(f"Initial rotation error: {self.initial_error_rotation:.4f} degrees")
+
+        # Initialize tracking of lowest errors
         lowest_position_error = float('inf')
         lowest_orientation_error = float('inf')
 
-        while not rospy.is_shutdown():
-            if self.latest_image is None:
-                rospy.logwarn_throttle(1, "Waiting for image...")
-                continue
+        try:
+            while not rospy.is_shutdown():
+                if self.latest_image is None:
+                    rospy.logwarn_throttle(1, "Waiting for image...")
+                    continue
 
-            # Perform IBVS
-            self.ibvs()
-            self.iteration_count += 1
+                try:
+                    self.ibvs()
+                except RuntimeError as e:
+                    if str(e) == "Persistent feature detection failure":
+                        rospy.logerr("Aborting sample due to persistent feature detection failures")
+                        return (self.camera_position, self.orientation_quaternion, False,
+                                float('inf'), float('inf'),
+                                np.array([]), np.array([]), 0,
+                                float('inf'), float('inf'),
+                                np.array([]), np.array([]), np.array([]),
+                                np.array([]), np.array([]), np.array([]),
+                                np.array([]), np.array([]), np.array([]))
+                    raise
 
-            # Calculate and store average velocity
-            avg_velocity = np.mean(np.abs(self.v_c))
-            self.average_velocities.append(avg_velocity)
-            self.velocity_history.append(avg_velocity)
+                self.iteration_count += 1
 
-            # Update velocity means
-            if len(self.velocity_history) >= 100:
-                self.velocity_mean_100.append(np.mean(self.velocity_history[-100:]))
-            else:
-                self.velocity_mean_100.append(np.mean(self.velocity_history))
+                # Calculate average velocity and store histories
+                avg_velocity = np.mean(np.abs(self.v_c))
+                self.average_velocities.append(avg_velocity)
+                self.velocity_history.append(avg_velocity)
 
-            if len(self.velocity_history) >= 10:
-                self.velocity_mean_10.append(np.mean(self.velocity_history[-10:]))
-            else:
-                self.velocity_mean_10.append(np.mean(self.velocity_history))
+                # Calculate velocity means
+                if len(self.velocity_history) >= 100:
+                    self.velocity_mean_100.append(np.mean(self.velocity_history[-100:]))
+                else:
+                    self.velocity_mean_100.append(np.mean(self.velocity_history))
 
-            # Apply control
-            self.publish_twist(self.v_c)
+                if len(self.velocity_history) >= 10:
+                    self.velocity_mean_10.append(np.mean(self.velocity_history[-10:]))
+                else:
+                    self.velocity_mean_10.append(np.mean(self.velocity_history))
 
-            # Update position and orientation tracking
-            self.camera_position, self.orientation_quaternion = self.get_current_camera_pose()
-            self.position_history.append(self.camera_position)
-            self.orientation_history.append(self.orientation_quaternion)
+                # Apply control
+                self.publish_twist(self.v_c)
 
-            # Calculate current errors
-            current_position_error, current_orientation_error = self.calculate_end_error(self.desired_orientation)
+                # Update position and orientation tracking
+                self.camera_position, self.orientation_quaternion = self.get_current_camera_pose()
+                self.position_history.append(self.camera_position)
+                self.orientation_history.append(self.orientation_quaternion)
 
-            # Update the lowest errors
-            lowest_position_error = min(lowest_position_error, current_position_error)
-            lowest_orientation_error = min(lowest_orientation_error, current_orientation_error)
+                # Calculate current errors
+                current_position_error, current_orientation_error = self.calculate_end_error(self.desired_orientation)
 
-            # Check if servoing is done
-            done, converged = self.is_visual_servoing_done()
-            if done:
-                rospy.loginfo(f"Visual servoing completed after {self.iteration_count} iterations.")
-                rospy.loginfo(f"Converged: {converged}")
+                # Update lowest errors
+                lowest_position_error = min(lowest_position_error, current_position_error)
+                lowest_orientation_error = min(lowest_orientation_error, current_orientation_error)
 
-                # Calculate final errors
-                final_position_error, final_orientation_error = self.calculate_end_error(self.desired_orientation)
+                # Check if servoing is done
+                done, converged = self.is_visual_servoing_done()
+                if done:
+                    rospy.loginfo(f"Visual servoing completed after {self.iteration_count} iterations.")
+                    rospy.loginfo(f"Converged: {converged}")
+                    rospy.loginfo(f"Final Position Error: {current_position_error:.2f} cm")
+                    rospy.loginfo(f"Final Orientation Error: {current_orientation_error:.2f} degrees")
+                    rospy.loginfo(f"Lowest Position Error: {lowest_position_error:.2f} cm")
+                    rospy.loginfo(f"Lowest Orientation Error: {lowest_orientation_error:.2f} degrees")
 
-                # Log final status
-                rospy.loginfo(f"Final Position Error: {final_position_error:.2f} cm")
-                rospy.loginfo(f"Final Orientation Error: {final_orientation_error:.2f} degrees")
-                rospy.loginfo(f"Lowest Position Error: {lowest_position_error:.2f} cm")
-                rospy.loginfo(f"Lowest Orientation Error: {lowest_orientation_error:.2f} degrees")
+                    return (self.camera_position, self.orientation_quaternion, converged,
+                            current_position_error, current_orientation_error,
+                            np.array(self.position_history), np.array(self.orientation_history),
+                            self.iteration_count,
+                            lowest_position_error, lowest_orientation_error,
+                            np.array(self.average_velocities),
+                            np.array(self.velocity_mean_100),
+                            np.array(self.velocity_mean_10),
+                            np.array(self.applied_velocity_x),
+                            np.array(self.applied_velocity_y),
+                            np.array(self.applied_velocity_z),
+                            np.array(self.applied_velocity_roll),
+                            np.array(self.applied_velocity_pitch),
+                            np.array(self.applied_velocity_yaw))
 
-                return (self.camera_position, self.orientation_quaternion, converged,
-                        final_position_error, final_orientation_error,
-                        np.array(self.position_history), np.array(self.orientation_history),
-                        self.iteration_count,
-                        lowest_position_error, lowest_orientation_error,
-                        np.array(self.average_velocities),
-                        np.array(self.velocity_mean_100),
-                        np.array(self.velocity_mean_10),
-                        np.array(self.applied_velocity_x),
-                        np.array(self.applied_velocity_y),
-                        np.array(self.applied_velocity_z),
-                        np.array(self.applied_velocity_roll),
-                        np.array(self.applied_velocity_pitch),
-                        np.array(self.applied_velocity_yaw))
+        except Exception as e:
+            rospy.logerr(f"Error in run loop: {str(e)}")
+            return self._create_error_return_tuple()
 
-        # If interrupted, send zero velocity
-        self.publish_twist(np.zeros(6))
-        final_position_error, final_orientation_error = self.calculate_end_error(self.desired_orientation)
-
-        return (self.camera_position, self.orientation_quaternion, False,
-                final_position_error, final_orientation_error,
-                np.array(self.position_history), np.array(self.orientation_history),
+    def _create_error_return_tuple(self):
+        """Helper method to create return tuple for error cases."""
+        return (self.camera_position,
+                self.orientation_quaternion,
+                False,
+                float('inf'),
+                float('inf'),
+                np.array(self.position_history),
+                np.array(self.orientation_history),
                 self.iteration_count,
-                lowest_position_error, lowest_orientation_error,
+                float('inf'),
+                float('inf'),
                 np.array(self.average_velocities),
                 np.array(self.velocity_mean_100),
                 np.array(self.velocity_mean_10),
@@ -742,7 +841,15 @@ class Controller:
                 np.array(self.applied_velocity_yaw))
 
     def calculate_end_error(self, desired_orientation):
-        """Calculate position and orientation errors."""
+        """
+        Calculate position and orientation errors.
+
+        Args:
+            desired_orientation (numpy.ndarray): The target orientation as quaternion
+
+        Returns:
+            tuple: (position_error in cm, orientation_error in degrees)
+        """
         # Calculate position error in centimeters
         position_error = np.linalg.norm(self.camera_position - self.desired_position) * 100
 
@@ -754,7 +861,16 @@ class Controller:
         return position_error, orientation_error
 
     def visualize_correspondences_with_lines(self, goal_image, current_image, points1, points2):
-        """Create and publish visualization of correspondences between two images."""
+        """
+        Create and publish visualization of correspondences between two images.
+
+        Args:
+            goal_image: PIL Image of the goal image
+            current_image: PIL Image of the current image
+            points1: numpy array or tensor of points in goal image
+            points2: numpy array or tensor of points in current image
+        """
+        # Create figure
         fig = plt.figure(figsize=(12, 6))
         ax1 = fig.add_subplot(121)
         ax2 = fig.add_subplot(122)
@@ -769,10 +885,11 @@ class Controller:
         # Plot correspondences with rainbow colors
         colors = plt.cm.rainbow(np.linspace(0, 1, len(points1_np)))
         for i, ((y1, x1), (y2, x2), color) in enumerate(zip(points1_np, points2_np, colors)):
-            # Plot points and labels
+            # Plot points in goal image
             ax1.plot(x1, y1, 'o', color=color, markersize=8)
             ax1.text(x1 + 5, y1 + 5, str(i), color=color, fontsize=8)
 
+            # Plot points in current image
             ax2.plot(x2, y2, 'o', color=color, markersize=8)
             ax2.text(x2 + 5, y2 + 5, str(i), color=color, fontsize=8)
 
@@ -788,42 +905,48 @@ class Controller:
         ax2.set_title("Current Image")
         plt.tight_layout()
 
-        # Convert figure to ROS message and publish
+        # Convert figure to image and publish
         fig.canvas.draw()
         img_data = np.frombuffer(fig.canvas.tostring_rgb(), dtype=np.uint8)
         img_data = img_data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
         ros_image = self.bridge.cv2_to_imgmsg(img_data, encoding="rgb8")
 
-        # Publish all visualizations
+        # Publish to all visualization topics
         self.correspondence_pub.publish(ros_image)
-        self.goal_image_pub.publish(self.bridge.cv2_to_imgmsg(np.array(goal_image), encoding="rgb8"))
-        self.current_image_pub.publish(self.bridge.cv2_to_imgmsg(np.array(current_image), encoding="rgb8"))
+
+        # Also publish individual images with points
+        goal_msg = self.bridge.cv2_to_imgmsg(np.array(goal_image), encoding="rgb8")
+        current_msg = self.bridge.cv2_to_imgmsg(np.array(current_image), encoding="rgb8")
+        self.goal_image_pub.publish(goal_msg)
+        self.current_image_pub.publish(current_msg)
 
         plt.close(fig)
 
     def get_current_camera_pose(self):
-        """Get current camera pose from Gazebo."""
+        """
+        Retrieve the current camera position and orientation from Gazebo.
+
+        Returns:
+            tuple: (position as np.array, orientation as np.array) or (None, None) if failed
+        """
         rospy.wait_for_service('/gazebo/get_model_state')
         try:
             get_model_state = rospy.ServiceProxy('/gazebo/get_model_state', GetModelState)
             model_state = get_model_state('realsense2_camera', '')
-
             position = np.array([
                 model_state.pose.position.x,
                 model_state.pose.position.y,
                 model_state.pose.position.z
             ])
-
             orientation = np.array([
                 model_state.pose.orientation.x,
                 model_state.pose.orientation.y,
                 model_state.pose.orientation.z,
                 model_state.pose.orientation.w
             ])
-
             return position, orientation
         except rospy.ServiceException as e:
-            rospy.logerr(f"Failed to get camera pose: {e}")
+            rospy.logerr(f"Service call failed: {e}")
             return None, None
 
 def scale_points_direct(points, target_size, num_patches):
@@ -902,37 +1025,6 @@ def calculate_position_error(positions, desired_position):
     average_error = np.mean(errors) * 100  # Convert to centimeters
     std_deviation = np.std(errors) * 100  # Convert to centimeters
     return average_error, std_deviation
-
-
-def detect_trend(data, window_size=100, consecutive_increases=5):
-    """
-    Detect if there's an increasing trend in the data.
-
-    Args:
-    data (array): Input data
-    window_size (int): Size of the sliding window for linear regression
-    consecutive_increases (int): Number of consecutive positive slopes required to confirm trend
-
-    Returns:
-    tuple: (bool indicating if trend is increasing, index where trend starts)
-    """
-    slopes = []
-    for i in range(len(data) - window_size):
-        y = data[i:i + window_size]
-        x = np.arange(window_size)
-        slope, _, _, _, _ = stats.linregress(x, y)
-        slopes.append(slope)
-
-    increasing_count = 0
-    for i, slope in enumerate(slopes):
-        if slope > 0:
-            increasing_count += 1
-            if increasing_count >= consecutive_increases:
-                return True, i + window_size - consecutive_increases
-        else:
-            increasing_count = 0
-
-    return False, -1
 
 
 def calculate_orientation_error(quaternion_list, desired_orientation):
@@ -1057,51 +1149,43 @@ def rotate_camera_x_axis(orientation_quaternion, angle_degrees):
 
 
 def find_and_set_best_pose(controller, camera_position, initial_quaternion):
-    """
-    Find the best pose by testing four different orientations and set the camera to that pose.
-
-    Args:
-        controller (Controller): The controller object.
-        camera_position (np.ndarray): The initial camera position.
-        initial_quaternion (np.ndarray): The initial orientation quaternion.
-
-    Returns:
-        tuple: A tuple containing the best camera position and orientation quaternion.
-    """
     best_pose = None
     best_mean = float('-inf')
-    current_mean = 0
+
+    # Store original num_pairs
+    original_num_pairs = controller.num_pairs
+    # Temporarily increase num_pairs for more robust matching
+    controller.num_pairs = 48
 
     # Test four different orientations
     for angle in [0, 90, 180, 270]:
-        if angle == 0:
-            current_quaternion = initial_quaternion
-        else:
-            current_quaternion = rotate_camera_x_axis(initial_quaternion, angle)
+        current_quaternion = initial_quaternion if angle == 0 else rotate_camera_x_axis(initial_quaternion, angle)
 
         set_camera_pose(camera_position, current_quaternion)
-        rospy.sleep(1)  # Wait for the pose to settle
+        rospy.sleep(1)
 
-        rospy.loginfo(f"Testing Camera Position ({angle}°): {camera_position}")
-        rospy.loginfo(f"Testing Orientation Quaternion ({angle}°): {current_quaternion}")
+        result = controller.detect_features()
+        if result is None or result[1] is None:
+            rospy.logwarn(f"Feature detection failed for {angle}° rotation")
+            continue
 
-        _, sim_selected_12 = controller.detect_features()
-        current_mean = sim_selected_12.mean()
+        _, sim_selected_12 = result
+        current_mean = sim_selected_12.mean().item()
         rospy.loginfo(f"sim mean for {angle}° rotation: {current_mean}")
 
-        # Update the best pose if current mean is higher
         if current_mean > best_mean:
             best_mean = current_mean
             best_pose = (camera_position, current_quaternion)
 
-    # Set the camera to the best pose
+    # Restore original num_pairs
+    controller.num_pairs = original_num_pairs
+
+    if best_pose is None:
+        rospy.logwarn("No valid pose found, using initial pose")
+        return (camera_position, initial_quaternion)
+
     set_camera_pose(*best_pose)
-    rospy.sleep(1)  # Wait for the pose to settle
-
-    rospy.loginfo(f"Selected Best Camera Position: {best_pose[0]}")
-    rospy.loginfo(f"Selected Best Orientation Quaternion: {best_pose[1]}")
-    rospy.loginfo(f"Best sim mean: {best_mean}")
-
+    rospy.sleep(1)
     return best_pose
 
 

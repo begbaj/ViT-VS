@@ -539,6 +539,16 @@ class Controller:
     def run(self):
         """Main visual servoing control loop."""
         rospy.loginfo("Starting visual servoing process...")
+
+        # First, get initial camera pose
+        initial_position, initial_orientation = self.get_current_camera_pose()
+        if initial_position is None or initial_orientation is None:
+            rospy.logerr("Failed to get initial camera pose. Aborting.")
+            return None
+
+        self.camera_position = initial_position
+        self.orientation_quaternion = initial_orientation
+
         self.iteration_count = 0
 
         # Initialize histories
@@ -548,6 +558,7 @@ class Controller:
         self.average_velocities = []
         self.velocity_mean_100 = []
         self.velocity_mean_10 = []
+        self.velocity_mean_history = []
 
         # Initialize velocity tracking
         self.applied_velocity_x = []
@@ -560,6 +571,25 @@ class Controller:
         # Initialize tracking variables
         lowest_position_error = float('inf')
         lowest_orientation_error = float('inf')
+
+        # Calculate initial errors and set targets
+        initial_position_error, initial_orientation_error = self.calculate_end_error(self.desired_orientation)
+        self.initial_position_error = initial_position_error
+        self.initial_error_translation = initial_position_error
+        self.initial_error_rotation = initial_orientation_error
+
+        # Set target errors based on initial errors
+        self.target_error_translation = initial_position_error * self.error_threshold_ratio
+        self.target_error_rotation = initial_orientation_error * self.error_threshold_ratio
+
+        # Make sure target errors are not smaller than absolute minimums
+        self.target_error_translation = max(self.target_error_translation, self.error_threshold_absolute_translation)
+        self.target_error_rotation = max(self.target_error_rotation, self.error_threshold_absolute_rotation)
+
+        rospy.loginfo(f"Initial position error: {initial_position_error:.2f} cm")
+        rospy.loginfo(f"Initial orientation error: {initial_orientation_error:.2f} degrees")
+        rospy.loginfo(f"Target position error: {self.target_error_translation:.2f} cm")
+        rospy.loginfo(f"Target orientation error: {self.target_error_rotation:.2f} degrees")
 
         while not rospy.is_shutdown():
             if self.latest_image is None:
@@ -591,6 +621,10 @@ class Controller:
 
             # Update position and orientation tracking
             self.camera_position, self.orientation_quaternion = self.get_current_camera_pose()
+            if self.camera_position is None or self.orientation_quaternion is None:
+                rospy.logerr("Failed to get camera pose during iteration. Aborting.")
+                break
+
             self.position_history.append(self.camera_position)
             self.orientation_history.append(self.orientation_quaternion)
 

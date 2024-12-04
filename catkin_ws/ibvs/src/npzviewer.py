@@ -1,69 +1,64 @@
 import numpy as np
+import os
 
 def print_npz_contents(file_path):
     """
     Read and print the contents of an NPZ file, showing at least two samples for each element.
-    Calculate mean and standard deviation of position and orientation errors for converged samples.
-    Show the top 5 lowest errors for both position and orientation.
+    Calculate statistics for converged samples including mean and standard deviation of position and orientation errors.
+    Analyze average velocities at specific points in the visual servoing process.
     
     Args:
     file_path (str): Path to the NPZ file
     """
+    # Print the name of the NPZ file being analyzed
+    print(f"Analyzing NPZ file: {os.path.basename(file_path)}")
+    print("=" * 40)
+
     # Load the NPZ file
     data = np.load(file_path, allow_pickle=True)
     
     print("Contents of the NPZ file:")
     print("-------------------------")
     
+    # Initialize variables to store relevant data
+    convergence_flags = None
     position_errors = None
     orientation_errors = None
-    convergence_flags = None
+    lowest_position_errors = None
+    lowest_orientation_errors = None
+    all_iteration_histories = None
+    all_average_velocities = None
+    all_velocity_mean_100 = None
+    all_velocity_mean_10 = None
 
     for key in data.files:
         print(f"\nKey: {key}")
         value = data[key]
         
-        if key == "position_errors":
+        # Store relevant data for later analysis
+        if key == "convergence_flags":
+            convergence_flags = value
+        elif key == "position_errors":
             position_errors = value
         elif key == "orientation_errors":
             orientation_errors = value
-        elif key == "convergence_flags":
-            convergence_flags = value
+        elif key == "lowest_position_errors":
+            lowest_position_errors = value
+        elif key == "lowest_orientation_errors":
+            lowest_orientation_errors = value
+        elif key == "all_iteration_histories":
+            all_iteration_histories = value
+        elif key == "all_average_velocities":
+            all_average_velocities = value
+        elif key == "all_velocity_mean_100":
+            all_velocity_mean_100 = value
+        elif key == "all_velocity_mean_10":
+            all_velocity_mean_10 = value
         
-        if isinstance(value, np.ndarray):
-            print(f"Type: numpy.ndarray")
-            print(f"Shape: {value.shape}")
-            print(f"Data type: {value.dtype}")
-            
-            # Print samples of the data
-            if value.dtype == object:
-                print("Samples:")
-                for i in range(min(2, len(value))):
-                    print(f"  Element {i}:")
-                    if isinstance(value[i], np.ndarray):
-                        print(f"    Shape: {value[i].shape}")
-                        if value[i].ndim == 1:
-                            print(f"    Data: {value[i][:5]} ...")
-                        else:
-                            print(f"    First few rows:")
-                            print(value[i][:5])
-                    else:
-                        print(f"    Data: {value[i]}")
-            else:
-                print("Samples (first few elements):")
-                if value.ndim == 1:
-                    print(value[:5])
-                else:
-                    print(value[:2])
-        else:
-            print(f"Type: {type(value)}")
-            print("Value:")
-            print(value)
-        
-        print("-------------------------")
+
 
     # Calculate statistics for converged samples
-    if position_errors is not None and orientation_errors is not None and convergence_flags is not None:
+    if convergence_flags is not None and position_errors is not None and orientation_errors is not None:
         converged_mask = convergence_flags == True
         converged_position_errors = position_errors[converged_mask]
         converged_orientation_errors = orientation_errors[converged_mask]
@@ -72,29 +67,49 @@ def print_npz_contents(file_path):
         converged_samples = np.sum(converged_mask)
         convergence_percentage = (converged_samples / total_samples) * 100
 
-        print("\nError Statistics (for converged samples only):")
-        print(f"Convergence: {converged_samples} out of {total_samples} ({convergence_percentage:.2f}%)")
+        print("\nConvergence Statistics:")
+        print(f"Converged samples: {converged_samples} out of {total_samples} ({convergence_percentage:.2f}%)")
         
-        print("\nPosition Errors:")
+        print("\nPosition Errors (for converged samples):")
         print(f"Mean: {np.mean(converged_position_errors):.6f}")
         print(f"Standard Deviation: {np.std(converged_position_errors):.6f}")
         
-        print("\nOrientation Errors:")
+        print("\nOrientation Errors (for converged samples):")
         print(f"Mean: {np.mean(converged_orientation_errors):.6f}")
         print(f"Standard Deviation: {np.std(converged_orientation_errors):.6f}")
 
-        # Find and display the lowest errors
-        print("\nTop 5 Lowest Position Errors:")
-        lowest_position_indices = np.argsort(converged_position_errors)[:5]
-        for i, idx in enumerate(lowest_position_indices):
-            print(f"  {i+1}. Sample {idx}: {converged_position_errors[idx]:.6f}")
+        if lowest_position_errors is not None and lowest_orientation_errors is not None:
+            converged_lowest_position_errors = lowest_position_errors[converged_mask]
+            converged_lowest_orientation_errors = lowest_orientation_errors[converged_mask]
+            
+            print("\nLowest Position Errors (for converged samples):")
+            print(f"Mean: {np.mean(converged_lowest_position_errors):.6f}")
+            print(f"Standard Deviation: {np.std(converged_lowest_position_errors):.6f}")
+            
+            print("\nLowest Orientation Errors (for converged samples):")
+            print(f"Mean: {np.mean(converged_lowest_orientation_errors):.6f}")
+            print(f"Standard Deviation: {np.std(converged_lowest_orientation_errors):.6f}")
 
-        print("\nTop 5 Lowest Orientation Errors:")
-        lowest_orientation_indices = np.argsort(converged_orientation_errors)[:5]
-        for i, idx in enumerate(lowest_orientation_indices):
-            print(f"  {i+1}. Sample {idx}: {converged_orientation_errors[idx]:.6f}")
+        if all_iteration_histories is not None:
+            converged_iteration_histories = all_iteration_histories[converged_mask]
+            print("\nIteration Statistics (for converged samples):")
+            print(f"Mean iterations: {np.mean(converged_iteration_histories):.2f}")
+            print(f"Standard Deviation of iterations: {np.std(converged_iteration_histories):.2f}")
+
+    if "total_execution_time" in data:
+        print(f"\nTotal Execution Time: {data['total_execution_time']:.2f} seconds")
+
+    # New section: Analyze average velocities at specific points
+    if all_average_velocities is not None and convergence_flags is not None:
+        print("\nVelocity Analysis:")
+        print("------------------")
+
+        lowest_velocities = []
+        final_mean_10_velocities = []
+        final_mean_100_velocities = []
+
 
 # Usage
 if __name__ == "__main__":
-    file_path = "visual_servoing_data.npz"  # Replace with your file path if different
+    file_path = "results_config_20241204_030936.npz"  # Replace with your file path if different
     print_npz_contents(file_path)
