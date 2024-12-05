@@ -107,6 +107,7 @@ class Controller:
         self.velocity_mean_100 = []
         self.velocity_mean_10 = []
         self.average_velocities = []
+        self.velocity_vector_history = []
 
         # Velocity tracking
         self.applied_velocity_x = []
@@ -173,6 +174,7 @@ class Controller:
         # Iteration control
         self.min_iterations = config['min_iterations']
         self.max_iterations = config['max_iterations']
+        self.max_velocity_vector_history = config.get('max_velocity_vector_history', 200)
 
         # this is processing resolution
         self.dino_input_size = config['dino_input_size']
@@ -197,76 +199,82 @@ class Controller:
         return self.ema_velocities[index]
 
     def is_visual_servoing_done(self):
-        """Check if visual servoing has converged or should stop."""
-        window_size = 100  # Window for calculating velocity_mean_100
-        trend_window = 200  # Window for analyzing the trend
-
-        # Check minimum iterations
-        if self.iteration_count < self.min_iterations:
+        """Check if visual servoing should stop based on error and velocity criteria"""
+        if self.iteration_count < 300:  # Wait at least 300 iterations
             return False, False
 
-        # Calculate current velocity mean
-        current_velocity_mean = np.mean(np.abs(self.v_c))
-        self.velocity_history.append(current_velocity_mean)
-
-        # Calculate mean velocity for the window
-        velocity_mean_100 = np.mean(self.velocity_history[-window_size:]) if len(
-            self.velocity_history) >= window_size else None
-
-        # Calculate current errors
+        # Get current errors
         current_error_translation, current_error_rotation = self.calculate_end_error(self.desired_orientation)
 
-        # Check if current error is more than twice the initial error
-        if current_error_translation > 2 * self.initial_position_error:
-            rospy.logerr("Position error exceeds twice the initial error. Aborting.")
-            return True, False
+        # Initialize initial errors if not already done
+        if not hasattr(self, 'initial_error_translation'):
+            self.initial_error_translation, self.initial_error_rotation = self.calculate_end_error(
+                self.desired_orientation)
 
-        if velocity_mean_100 is not None:
-            self.velocity_mean_history.append(velocity_mean_100)
+        # Check if current error is more than twice the initial error (divergence check)
+        if current_error_translation > 2 * self.initial_error_translation:
+            rospy.logerr("Aborting sample due to position error exceeding twice the initial error.")
+            return True, False  # Done but not converged
 
-            # Check if we have enough data to analyze trend
-            if len(self.velocity_mean_history) >= trend_window:
-                trend_increasing, _ = detect_trend(self.velocity_mean_history[-trend_window:])
+        # Error-based convergence checks
+        error_reduced_90_percent = ((current_error_translation / self.initial_error_translation) < 0.1 and
+                                    (current_error_rotation / self.initial_error_rotation) < 0.1)
 
-                if trend_increasing:
-                    error_reduced = (current_error_translation <= self.target_error_translation) and \
-                                    (current_error_rotation <= self.target_error_rotation)
-                    if error_reduced:
-                        rospy.loginfo("Error reduction achieved. Stopping.")
-                        return True, True
+        error_below_absolute = (current_error_translation < 0.01 and  # 1cm
+                                current_error_rotation < 1.0)  # 1 degree
 
-        # Check convergence criteria
-        velocity_below_threshold = velocity_mean_100 is not None and \
-                                   velocity_mean_100 < self.velocity_convergence_threshold
-        error_reduced = (current_error_translation <= self.target_error_translation) and \
-                        (current_error_rotation <= self.target_error_rotation)
+        error_converged = error_reduced_90_percent or error_below_absolute
 
-        # Print status every 250 iterations
-        if self.iteration_count % 250 == 0:
-            rospy.logwarn(f"Translation error: {current_error_translation:.4f} cm "
-                          f"(target: {self.target_error_translation:.4f} cm)")
-            rospy.logwarn(f"Rotation error: {current_error_rotation:.4f} degrees "
-                          f"(target: {self.target_error_rotation:.4f} degrees)")
-            if velocity_mean_100 is not None:
-                rospy.loginfo(f"Mean velocity (100 iterations): {velocity_mean_100:.6f}")
+        # Velocity-based stopping check with sliding windows
+        if len(self.velocity_vector_history) >= 200:  # Need 200 samples for two windows
+            recent_velocities = np.array(self.velocity_vector_history[-200:])
 
-        converged = error_reduced and velocity_below_threshold
+            # Split into two 100-sample windows
+            first_window = recent_velocities[:100]
+            second_window = recent_velocities[100:]
 
-        # Check maximum iterations
+            # Calculate means for both windows
+            first_trans_velocities = np.linalg.norm(first_window[:, :3] * 1000.0, axis=1)  # mm/s
+            first_rot_velocities = np.linalg.norm(np.degrees(first_window[:, 3:]), axis=1)  # deg/s
+
+            second_trans_velocities = np.linalg.norm(second_window[:, :3] * 1000.0, axis=1)
+            second_rot_velocities = np.linalg.norm(np.degrees(second_window[:, 3:]), axis=1)
+
+            first_trans_mean = np.mean(first_trans_velocities)
+            first_rot_mean = np.mean(first_rot_velocities)
+            second_trans_mean = np.mean(second_trans_velocities)
+            second_rot_mean = np.mean(second_rot_velocities)
+
+            # Print velocity information every 50 iterations
+            if self.iteration_count % 50 == 0:
+                rospy.loginfo(f"\nVelocity Analysis (last 200 iterations):")
+                rospy.loginfo(f"First window translation mean (mm/s): {first_trans_mean:.6f}")
+                rospy.loginfo(f"Second window translation mean (mm/s): {second_trans_mean:.6f}")
+                rospy.loginfo(f"First window rotation mean (deg/s): {first_rot_mean:.6f}")
+                rospy.loginfo(f"Second window rotation mean (deg/s): {second_rot_mean:.6f}")
+
+            # Check convergence conditions
+            if first_trans_mean < 1.0 and first_rot_mean < 0.1:
+                if second_trans_mean > first_trans_mean and second_rot_mean > first_rot_mean:
+                    rospy.loginfo("Velocity trend indicates convergence - checking final error")
+                    return True, error_reduced_90_percent
+
+        # Print current errors periodically
+        if self.iteration_count % 50 == 0:
+            rospy.loginfo(f"Current translation error: {current_error_translation:.4f} cm")
+            rospy.loginfo(f"Current rotation error: {current_error_rotation:.4f} degrees")
+
+        # Check if maximum iterations reached
         if self.iteration_count >= self.max_iterations:
-            target_error_translation_90 = self.initial_error_translation * 0.1
-            target_error_rotation_90 = self.initial_error_rotation * 0.1
-            error_reduced_90_percent = (current_error_translation <= target_error_translation_90) and \
-                                       (current_error_rotation <= target_error_rotation_90)
-
+            rospy.loginfo("Maximum iterations reached")
             if error_reduced_90_percent:
-                rospy.logwarn("Max iterations reached with 90% error reduction. Marking as converged.")
+                rospy.logwarn("Maximum iterations reached with 90% error reduction. Marking as converged.")
                 return True, True
             else:
-                rospy.logwarn("Max iterations reached without sufficient error reduction.")
+                rospy.logwarn("Maximum iterations reached without sufficient error reduction.")
                 return True, False
 
-        return converged, converged
+        return False, False
 
     def setup_ros_communication(self):
         """Setup ROS publishers and subscribers."""
@@ -312,100 +320,145 @@ class Controller:
     def detect_features(self):
         """Detect features using the specified method (SIFT, ORB, or AKAZE)."""
         if self.latest_image is None:
+            rospy.logwarn("No latest image available")
             return None, None
 
-        # Resize images to the input size
-        goal_image_resized = np.array(self.goal_image.resize((self.dino_input_size, self.dino_input_size)))
-        current_image_resized = np.array(self.latest_pil_image.resize((self.dino_input_size, self.dino_input_size)))
+        try:
+            # Resize images to the input size
+            goal_image_resized = np.array(self.goal_image.resize((self.dino_input_size, self.dino_input_size)))
+            current_image_resized = np.array(self.latest_pil_image.resize((self.dino_input_size, self.dino_input_size)))
 
-        # Convert images to grayscale
-        goal_gray = cv2.cvtColor(goal_image_resized, cv2.COLOR_RGB2GRAY)
-        current_gray = cv2.cvtColor(current_image_resized, cv2.COLOR_RGB2GRAY)
+            # Convert images to grayscale
+            goal_gray = cv2.cvtColor(goal_image_resized, cv2.COLOR_RGB2GRAY)
+            current_gray = cv2.cvtColor(current_image_resized, cv2.COLOR_RGB2GRAY)
 
-        # Initialize detector based on method
-        if self.method == 'sift':
-            detector = cv2.SIFT_create()
-            norm_type = cv2.NORM_L2
-        elif self.method == 'orb':
-            detector = cv2.ORB_create(nfeatures=1000)
-            norm_type = cv2.NORM_HAMMING
-        elif self.method == 'akaze':
-            detector = cv2.AKAZE_create()
-            norm_type = cv2.NORM_HAMMING
-        else:
-            rospy.logerr(f"Unknown feature detection method: {self.method}")
+            # Initialize detector based on method
+            if self.method == 'sift':
+                detector = cv2.SIFT_create()
+                norm_type = cv2.NORM_L2
+            elif self.method == 'orb':
+                detector = cv2.ORB_create(nfeatures=1000)
+                norm_type = cv2.NORM_HAMMING
+            elif self.method == 'akaze':
+                detector = cv2.AKAZE_create()
+                norm_type = cv2.NORM_HAMMING
+            else:
+                rospy.logerr(f"Unknown feature detection method: {self.method}")
+                return None, None
+
+            # Detect and compute keypoints and descriptors
+            kp1, des1 = detector.detectAndCompute(goal_gray, None)
+            kp2, des2 = detector.detectAndCompute(current_gray, None)
+
+            if des1 is None or des2 is None:
+                rospy.logwarn("No descriptors found in one or both images")
+                return None, None
+
+            rospy.loginfo(
+                f"{self.method.upper()} found {len(kp1)} keypoints in goal image and {len(kp2)} keypoints in current image")
+
+            # Initialize BF matcher with appropriate norm type
+            bf = cv2.BFMatcher(norm_type, crossCheck=True)
+            matches = bf.match(des1, des2)
+
+            if len(matches) < 4:  # Minimum required for visual servoing
+                rospy.logwarn(f"Insufficient matches found: {len(matches)} < 4")
+                return None, None
+
+            # Get all distances
+            distances = np.array([m.distance for m in matches])
+
+            # Normalize and invert distances to [0,1] range where 1 is best match
+            min_dist = np.min(distances)
+            max_dist = np.max(distances)
+            normalized_distances = 1 - (distances - min_dist) / (max_dist - min_dist)
+
+            # Sort matches by distance
+            matches = sorted(matches, key=lambda x: x.distance)
+
+            # Determine number of pairs to use
+            available_matches = len(matches)
+            num_pairs_to_use = min(self.num_pairs, available_matches)
+
+            if num_pairs_to_use < 4:
+                rospy.logwarn("Not enough good matches for visual servoing")
+                return None, None
+
+            if num_pairs_to_use < self.num_pairs:
+                rospy.logwarn(f"Using reduced number of features: {num_pairs_to_use} (requested: {self.num_pairs})")
+
+            # Select top matches
+            matches = matches[:num_pairs_to_use]
+
+            try:
+                points1 = np.float32([kp1[m.queryIdx].pt for m in matches])
+                points2 = np.float32([kp2[m.trainIdx].pt for m in matches])
+
+                # Visualize correspondences
+                self.visualize_correspondences_with_lines(
+                    goal_image_resized,
+                    current_image_resized,
+                    points1,
+                    points2
+                )
+
+                return self.calculate_uv(points1.tolist(), points2.tolist()), None
+
+            except Exception as e:
+                rospy.logerr(f"Error extracting point locations: {str(e)}")
+                return None, None
+
+        except Exception as e:
+            rospy.logerr(f"Error in detect_features: {str(e)}")
             return None, None
-
-        # Detect and compute keypoints and descriptors
-        kp1, des1 = detector.detectAndCompute(goal_gray, None)
-        kp2, des2 = detector.detectAndCompute(current_gray, None)
-
-        rospy.loginfo(
-            f"{self.method.upper()} found {len(kp1)} keypoints in goal image and {len(kp2)} keypoints in current image")
-
-        if des1 is None or des2 is None or len(kp1) < self.num_pairs or len(kp2) < self.num_pairs:
-            return None, None
-
-        # Initialize BF matcher with appropriate norm type
-        bf = cv2.BFMatcher(norm_type, crossCheck=True)
-        matches = bf.match(des1, des2)
-
-        # Get all distances
-        distances = np.array([m.distance for m in matches])
-
-        # Normalize and invert distances to [0,1] range where 1 is best match
-        min_dist = np.min(distances)
-        max_dist = np.max(distances)
-        normalized_distances = 1 - (distances - min_dist) / (max_dist - min_dist)
-
-        # Print statistics
-        rospy.loginfo(f"Total matches found: {len(matches)}")
-        rospy.loginfo(f"Normalized distances - Mean: {np.mean(normalized_distances):.3f}, "
-                      f"Median: {np.median(normalized_distances):.3f}")
-
-        # Sort matches by distance
-        matches = sorted(matches, key=lambda x: x.distance)
-
-        # Print normalized distances for top matches
-        top_normalized = normalized_distances[np.argsort(distances)][:self.num_pairs]
-        rospy.loginfo(f"Top {self.num_pairs} normalized distances (1=best, 0=worst): "
-                      f"{', '.join([f'{d:.3f}' for d in top_normalized])}")
-
-        # Select top num_pairs matches
-        matches = matches[:self.num_pairs]
-
-        # Extract locations of matched keypoints
-        points1 = np.float32([kp1[m.queryIdx].pt for m in matches])
-        points2 = np.float32([kp2[m.trainIdx].pt for m in matches])
-
-        # Visualize correspondences
-        self.visualize_correspondences_with_lines(
-            goal_image_resized,
-            current_image_resized,
-            points1,
-            points2
-        )
-
-        return self.calculate_uv(points1.tolist(), points2.tolist()), None
 
     def calculate_uv(self, goal_features, current_features):
         """Calculate feature points and scale them to the real image resolution."""
-        num_pairs = min(self.num_pairs, len(goal_features))
+        try:
+            if goal_features is None or current_features is None:
+                rospy.logwarn("Received None features in calculate_uv")
+                return None, None
 
-        s_uv_star = np.zeros([num_pairs, 2], dtype=int)
-        s_uv = np.zeros([num_pairs, 2], dtype=int)
+            if len(goal_features) == 0 or len(current_features) == 0:
+                rospy.logwarn("Received empty feature lists in calculate_uv")
+                return None, None
 
-        # Scale factors to convert from input size to original image size
-        scale_x = self.u_max / self.dino_input_size
-        scale_y = self.v_max / self.dino_input_size
+            if len(goal_features) != len(current_features):
+                rospy.logwarn("Mismatched number of features between goal and current")
+                return None, None
 
-        for count in range(num_pairs):
-            s_uv_star[count, 0] = round(goal_features[count][0] * scale_x)
-            s_uv_star[count, 1] = round(goal_features[count][1] * scale_y)
-            s_uv[count, 0] = round(current_features[count][0] * scale_x)
-            s_uv[count, 1] = round(current_features[count][1] * scale_y)
+            num_available_pairs = len(goal_features)
+            if num_available_pairs < 4:
+                rospy.logwarn(f"Insufficient feature pairs: {num_available_pairs} (minimum 4 required)")
+                return None, None
 
-        return s_uv_star, s_uv
+            # Use available pairs, but no more than requested
+            num_pairs = min(num_available_pairs, self.num_pairs)
+            if num_pairs < self.num_pairs:
+                rospy.loginfo(f"Using {num_pairs} feature pairs (originally requested {self.num_pairs})")
+
+            s_uv = np.zeros([num_pairs, 2], dtype=int)
+            s_uv_star = np.zeros([num_pairs, 2], dtype=int)
+
+            # Scale factors to convert from input size to original image size
+            scale_x = self.u_max / self.dino_input_size
+            scale_y = self.v_max / self.dino_input_size
+
+            for count in range(num_pairs):
+                if len(goal_features[count]) != 2 or len(current_features[count]) != 2:
+                    rospy.logwarn("Invalid feature point format")
+                    return None, None
+
+                s_uv_star[count, 0] = round(goal_features[count][0] * scale_x)
+                s_uv_star[count, 1] = round(goal_features[count][1] * scale_y)
+                s_uv[count, 0] = round(current_features[count][0] * scale_x)
+                s_uv[count, 1] = round(current_features[count][1] * scale_y)
+
+            return s_uv_star, s_uv
+
+        except Exception as e:
+            rospy.logerr(f"Error in calculate_uv: {str(e)}")
+            return None, None
 
     def publish_figure(self, fig, publisher):
         """Convert a matplotlib figure to a ROS Image message and publish it."""
@@ -444,35 +497,72 @@ class Controller:
         """Image Based Visual Servoing Method."""
         if self.latest_image is None:
             print("No latest image available")
-            return
+            return False
 
         start_time = time.time()
 
-        (s_uv_star, s_uv), _ = self.detect_features()
-        if s_uv_star is None or s_uv is None:
-            print("Feature detection failed")
-            return
+        # Check current error
+        current_error_translation, _ = self.calculate_end_error(self.desired_orientation)
+        if hasattr(self, 'initial_error_translation'):
+            if current_error_translation > 2 * self.initial_error_translation:
+                rospy.logerr(
+                    f"Current error ({current_error_translation:.2f} cm) exceeds twice the initial error ({self.initial_error_translation:.2f} cm). Aborting sample.")
+                return False
 
-        self.draw_points(np.array(self.latest_pil_image), s_uv, s_uv_star)
+        try:
+            (s_uv_star, s_uv), _ = self.detect_features()
+            if s_uv_star is None or s_uv is None:
+                if hasattr(self, 'v_c') and self.v_c is not None:
+                    rospy.logwarn("Feature detection failed - continuing with last known velocities")
+                    end_time = time.time()
+                    print(
+                        f"IBVS iteration executed in: {end_time - start_time:.2f} seconds ||| iteration count: {self.iteration_count}")
+                    return True  # Continue with last known velocities
+                else:
+                    print("Feature detection failed and no previous velocities available")
+                    return False
 
-        # Transform feature points to real-world coordinates
-        s_xy, s_star_xy = self.transform_to_real_world(s_uv, s_uv_star)
+            self.draw_points(np.array(self.latest_pil_image), s_uv, s_uv_star)
 
-        # Calculate error and interaction matrix
-        e = s_xy - s_star_xy
-        e = e.reshape((len(s_xy) * 2, 1))
+            # Transform feature points to real-world coordinates
+            s_xy, s_star_xy = self.transform_to_real_world(s_uv, s_uv_star)
 
-        Z = self.get_depth(s_uv)
-        L = self.calculate_interaction_matrix(s_xy, Z)
+            # Calculate error and interaction matrix
+            e = s_xy - s_star_xy
+            e = e.reshape((len(s_xy) * 2, 1))
 
-        # Calculate camera velocities using control law
-        v_c = -self.lambda_ * np.linalg.pinv(L.astype('float')) @ e
+            Z = self.get_depth(s_uv)
+            if Z is None:
+                if hasattr(self, 'v_c') and self.v_c is not None:
+                    rospy.logwarn("Depth information unavailable - continuing with last known velocities")
+                    return True  # Continue with last known velocities
+                else:
+                    print("Failed to get depth information and no previous velocities available")
+                    return False
 
-        # Update EMA for each velocity component
-        self.v_c = np.array([self.update_ema(i, v) for i, v in enumerate(v_c.flatten())])
+            L = self.calculate_interaction_matrix(s_xy, Z)
+            v_c = -self.lambda_ * np.linalg.pinv(L.astype('float')) @ e
 
-        end_time = time.time()
-        print(f"IBVS iteration executed in: {end_time - start_time:.2f} seconds ||| iteration count: {self.iteration_count}")
+            # Update EMA for each velocity component
+            self.v_c = np.array([self.update_ema(i, v) for i, v in enumerate(v_c.flatten())])
+
+            # Store velocity history
+            self.velocity_vector_history.append(self.v_c)
+            if len(self.velocity_vector_history) > self.max_velocity_vector_history:
+                self.velocity_vector_history.pop(0)
+
+            end_time = time.time()
+            print(
+                f"IBVS iteration executed in: {end_time - start_time:.2f} seconds ||| iteration count: {self.iteration_count}")
+
+            return True
+
+        except Exception as e:
+            rospy.logerr(f"Error in IBVS: {str(e)}")
+            if hasattr(self, 'v_c') and self.v_c is not None:
+                rospy.logwarn("Error in IBVS - continuing with last known velocities")
+                return True  # Continue with last known velocities
+            return False
 
     def transform_to_real_world(self, s_uv, s_uv_star):
         """Transform pixel feature points to real-world coordinates."""
@@ -544,7 +634,7 @@ class Controller:
         initial_position, initial_orientation = self.get_current_camera_pose()
         if initial_position is None or initial_orientation is None:
             rospy.logerr("Failed to get initial camera pose. Aborting.")
-            return None
+            return self._create_failure_return()
 
         self.camera_position = initial_position
         self.orientation_quaternion = initial_orientation
@@ -559,6 +649,7 @@ class Controller:
         self.velocity_mean_100 = []
         self.velocity_mean_10 = []
         self.velocity_mean_history = []
+        self.velocity_vector_history = []
 
         # Initialize velocity tracking
         self.applied_velocity_x = []
@@ -578,111 +669,116 @@ class Controller:
         self.initial_error_translation = initial_position_error
         self.initial_error_rotation = initial_orientation_error
 
-        # Set target errors based on initial errors
-        self.target_error_translation = initial_position_error * self.error_threshold_ratio
-        self.target_error_rotation = initial_orientation_error * self.error_threshold_ratio
+        try:
+            while not rospy.is_shutdown():
+                if self.latest_image is None:
+                    rospy.logwarn_throttle(1, "Waiting for image...")
+                    continue
 
-        # Make sure target errors are not smaller than absolute minimums
-        self.target_error_translation = max(self.target_error_translation, self.error_threshold_absolute_translation)
-        self.target_error_rotation = max(self.target_error_rotation, self.error_threshold_absolute_rotation)
+                # Perform IBVS
+                success = self.ibvs()
+                if not success:
+                    rospy.logwarn("IBVS iteration failed - returning failure state")
+                    return self._create_failure_return()
 
-        rospy.loginfo(f"Initial position error: {initial_position_error:.2f} cm")
-        rospy.loginfo(f"Initial orientation error: {initial_orientation_error:.2f} degrees")
-        rospy.loginfo(f"Target position error: {self.target_error_translation:.2f} cm")
-        rospy.loginfo(f"Target orientation error: {self.target_error_rotation:.2f} degrees")
+                self.iteration_count += 1
 
-        while not rospy.is_shutdown():
-            if self.latest_image is None:
-                rospy.logwarn_throttle(1, "Waiting for image...")
-                continue
+                # Calculate and store average velocity
+                avg_velocity = np.mean(np.abs(self.v_c))
+                self.average_velocities.append(avg_velocity)
+                self.velocity_history.append(avg_velocity)
 
-            # Perform IBVS
-            self.ibvs()
-            self.iteration_count += 1
+                # Update velocity means
+                if len(self.velocity_history) >= 100:
+                    self.velocity_mean_100.append(np.mean(self.velocity_history[-100:]))
+                else:
+                    self.velocity_mean_100.append(np.mean(self.velocity_history))
 
-            # Calculate and store average velocity
-            avg_velocity = np.mean(np.abs(self.v_c))
-            self.average_velocities.append(avg_velocity)
-            self.velocity_history.append(avg_velocity)
+                if len(self.velocity_history) >= 10:
+                    self.velocity_mean_10.append(np.mean(self.velocity_history[-10:]))
+                else:
+                    self.velocity_mean_10.append(np.mean(self.velocity_history))
 
-            # Update velocity means
-            if len(self.velocity_history) >= 100:
-                self.velocity_mean_100.append(np.mean(self.velocity_history[-100:]))
-            else:
-                self.velocity_mean_100.append(np.mean(self.velocity_history))
+                # Apply control
+                self.publish_twist(self.v_c)
 
-            if len(self.velocity_history) >= 10:
-                self.velocity_mean_10.append(np.mean(self.velocity_history[-10:]))
-            else:
-                self.velocity_mean_10.append(np.mean(self.velocity_history))
+                # Update position and orientation tracking
+                self.camera_position, self.orientation_quaternion = self.get_current_camera_pose()
+                if self.camera_position is None or self.orientation_quaternion is None:
+                    rospy.logerr("Failed to get camera pose during iteration. Aborting.")
+                    return self._create_failure_return()
 
-            # Apply control
-            self.publish_twist(self.v_c)
+                self.position_history.append(self.camera_position)
+                self.orientation_history.append(self.orientation_quaternion)
 
-            # Update position and orientation tracking
-            self.camera_position, self.orientation_quaternion = self.get_current_camera_pose()
-            if self.camera_position is None or self.orientation_quaternion is None:
-                rospy.logerr("Failed to get camera pose during iteration. Aborting.")
-                break
+                # Calculate current errors
+                current_position_error, current_orientation_error = self.calculate_end_error(self.desired_orientation)
 
-            self.position_history.append(self.camera_position)
-            self.orientation_history.append(self.orientation_quaternion)
+                # Update the lowest errors
+                lowest_position_error = min(lowest_position_error, current_position_error)
+                lowest_orientation_error = min(lowest_orientation_error, current_orientation_error)
 
-            # Calculate current errors
-            current_position_error, current_orientation_error = self.calculate_end_error(self.desired_orientation)
+                # Check if servoing is done
+                done, converged = self.is_visual_servoing_done()
+                if done:
+                    rospy.loginfo(f"Visual servoing completed after {self.iteration_count} iterations.")
+                    rospy.loginfo(f"Converged: {converged}")
 
-            # Update the lowest errors
-            lowest_position_error = min(lowest_position_error, current_position_error)
-            lowest_orientation_error = min(lowest_orientation_error, current_orientation_error)
+                    # Calculate final errors
+                    final_position_error, final_orientation_error = self.calculate_end_error(self.desired_orientation)
 
-            # Check if servoing is done
-            done, converged = self.is_visual_servoing_done()
-            if done:
-                rospy.loginfo(f"Visual servoing completed after {self.iteration_count} iterations.")
-                rospy.loginfo(f"Converged: {converged}")
+                    # Log final status
+                    rospy.loginfo(f"Final Position Error: {final_position_error:.2f} cm")
+                    rospy.loginfo(f"Final Orientation Error: {final_orientation_error:.2f} degrees")
+                    rospy.loginfo(f"Lowest Position Error: {lowest_position_error:.2f} cm")
+                    rospy.loginfo(f"Lowest Orientation Error: {lowest_orientation_error:.2f} degrees")
 
-                # Calculate final errors
-                final_position_error, final_orientation_error = self.calculate_end_error(self.desired_orientation)
+                    return (self.camera_position, self.orientation_quaternion, converged,
+                            final_position_error, final_orientation_error,
+                            np.array(self.position_history), np.array(self.orientation_history),
+                            self.iteration_count,
+                            lowest_position_error, lowest_orientation_error,
+                            np.array(self.average_velocities),
+                            np.array(self.velocity_mean_100),
+                            np.array(self.velocity_mean_10),
+                            np.array(self.applied_velocity_x),
+                            np.array(self.applied_velocity_y),
+                            np.array(self.applied_velocity_z),
+                            np.array(self.applied_velocity_roll),
+                            np.array(self.applied_velocity_pitch),
+                            np.array(self.applied_velocity_yaw))
 
-                # Log final status
-                rospy.loginfo(f"Final Position Error: {final_position_error:.2f} cm")
-                rospy.loginfo(f"Final Orientation Error: {final_orientation_error:.2f} degrees")
-                rospy.loginfo(f"Lowest Position Error: {lowest_position_error:.2f} cm")
-                rospy.loginfo(f"Lowest Orientation Error: {lowest_orientation_error:.2f} degrees")
+            # If interrupted, send zero velocity
+            self.publish_twist(np.zeros(6))
+            return self._create_failure_return()
 
-                return (self.camera_position, self.orientation_quaternion, converged,
-                        final_position_error, final_orientation_error,
-                        np.array(self.position_history), np.array(self.orientation_history),
-                        self.iteration_count,
-                        lowest_position_error, lowest_orientation_error,
-                        np.array(self.average_velocities),
-                        np.array(self.velocity_mean_100),
-                        np.array(self.velocity_mean_10),
-                        np.array(self.applied_velocity_x),
-                        np.array(self.applied_velocity_y),
-                        np.array(self.applied_velocity_z),
-                        np.array(self.applied_velocity_roll),
-                        np.array(self.applied_velocity_pitch),
-                        np.array(self.applied_velocity_yaw))
+        except Exception as e:
+            rospy.logerr(f"Exception in run loop: {str(e)}")
+            return self._create_failure_return()
 
-        # If interrupted, send zero velocity
-        self.publish_twist(np.zeros(6))
-        final_position_error, final_orientation_error = self.calculate_end_error(self.desired_orientation)
-
-        return (self.camera_position, self.orientation_quaternion, False,
-                final_position_error, final_orientation_error,
-                np.array(self.position_history), np.array(self.orientation_history),
-                self.iteration_count,
-                lowest_position_error, lowest_orientation_error,
-                np.array(self.average_velocities),
-                np.array(self.velocity_mean_100),
-                np.array(self.velocity_mean_10),
-                np.array(self.applied_velocity_x),
-                np.array(self.applied_velocity_y),
-                np.array(self.applied_velocity_z),
-                np.array(self.applied_velocity_roll),
-                np.array(self.applied_velocity_pitch),
-                np.array(self.applied_velocity_yaw))
+    def _create_failure_return(self):
+        """Helper method to create a properly formatted failure return tuple."""
+        return (
+            np.full_like(self.desired_position, np.nan),  # final_position
+            np.full_like(self.desired_orientation, np.nan),  # final_quaternion
+            False,  # converged
+            np.nan,  # position_error
+            np.nan,  # orientation_error
+            np.array([]),  # position_history
+            np.array([]),  # orientation_history
+            0,  # iteration_history
+            np.nan,  # lowest_position_error
+            np.nan,  # lowest_orientation_error
+            np.array([]),  # average_velocities
+            np.array([]),  # velocity_mean_100
+            np.array([]),  # velocity_mean_10
+            np.array([]),  # applied_velocity_x
+            np.array([]),  # applied_velocity_y
+            np.array([]),  # applied_velocity_z
+            np.array([]),  # applied_velocity_roll
+            np.array([]),  # applied_velocity_pitch
+            np.array([])  # applied_velocity_yaw
+        )
 
     def calculate_end_error(self, desired_orientation):
         """Calculate position and orientation errors."""
@@ -1196,32 +1292,32 @@ def apply_z_axis_rotation(rotation_matrices, num_circles, samples_per_circle, rz
 
 
 def main(args):
-    # Initialize ROS node
+    # Initialize the ROS node
     rospy.init_node('visual_servoing_inference', anonymous=True)
     start_time = time.time()
 
-    # Initialize result storage lists
-    results = {
-        'final_positions': [],
-        'final_quaternions': [],
-        'convergence_flags': [],
-        'position_errors': [],
-        'orientation_errors': [],
-        'position_histories': [],
-        'orientation_histories': [],
-        'iteration_histories': [],
-        'lowest_position_errors': [],
-        'lowest_orientation_errors': [],
-        'average_velocities': [],
-        'velocity_mean_100': [],
-        'velocity_mean_10': [],
-        'velocities': {
-            'x': [], 'y': [], 'z': [],
-            'roll': [], 'pitch': [], 'yaw': []
-        }
-    }
+    # Lists to store final camera positions, quaternions, convergence flags, and End Errors
+    final_positions = []
+    final_quaternions = []
+    convergence_flags = []
+    position_errors = []
+    orientation_errors = []
+    all_position_histories = []
+    all_orientation_histories = []
+    all_iteration_histories = []
+    lowest_position_errors = []
+    lowest_orientation_errors = []
+    all_average_velocities = []
+    all_velocity_mean_100 = []
+    all_velocity_mean_10 = []
+    all_applied_velocity_x = []
+    all_applied_velocity_y = []
+    all_applied_velocity_z = []
+    all_applied_velocity_roll = []
+    all_applied_velocity_pitch = []
+    all_applied_velocity_yaw = []
 
-    # Load configuration
+    # Load parameters from YAML file
     current_directory = os.path.dirname(__file__)
     config_filename = args.config if args.config else 'config.yaml'
     config_path = os.path.join(current_directory, f'../config/{config_filename}')
@@ -1230,105 +1326,220 @@ def main(args):
     with open(config_path, 'r') as file:
         config = yaml.safe_load(file)
 
-    # Set up simulation parameters
+    # Get parameters from config
+    num_circles = config['num_circles']
+    circle_radius_aug = config['circle_radius_aug']
+    samples_per_circle = config['num_samples'] // num_circles
+    num_samples = num_circles * samples_per_circle  # Ensure num_samples is exactly divisible
+
+    rospy.loginfo(f"Processing {num_samples} samples ({num_circles} circles with {samples_per_circle} samples each)")
+
+    # Define the desired position and orientation
     desired_position = np.array([0, 0, 0.61])
     desired_orientation = np.array([0, 0.7071068, 0, 0.7071068])
     box_sample_size = np.array([1.2, 1.2, 0.3])
     reference_point = np.array([0.0, 0.0, 0.01])
 
-    # Set random seeds for reproducibility
+    # Set the random seed
     np.random.seed(41)
 
-    # Sample camera positions and focal points
-    camera_positions = sample_camera_positions(box_sample_size, config['num_samples'], desired_position)
-    focal_points = sample_focal_points_original(config['num_samples'],
-                                              reference_point,
-                                              config['num_circles'],
-                                              config['circle_radius_aug'])
+    # Sample the camera positions
+    camera_positions = sample_camera_positions(box_sample_size, num_samples, desired_position)
+    rospy.loginfo(f"Generated {len(camera_positions)} camera positions")
 
-    # Calculate initial orientations
-    look_at_matrices, orientations = calculate_look_at_orientation(camera_positions, focal_points)
+    # Sample focal points
+    focal_points = sample_focal_points_original(num_samples, reference_point, num_circles, circle_radius_aug)
+    rospy.loginfo(f"Generated {len(focal_points)} focal points")
 
-    # Initialize controller
+    # Calculate look-at orientations for the cameras
+    look_at_matrices, look_at_quaternions = calculate_look_at_orientation(camera_positions, focal_points)
+    rospy.loginfo(f"Generated {len(look_at_matrices)} look-at matrices")
+
+    # Pre-calculate position and orientation errors before processing
+    avg_pos_error, std_pos_error = calculate_position_error(camera_positions, desired_position)
+    rospy.loginfo(f"Average Position Error (before processing): {avg_pos_error:.2f} cm")
+    rospy.loginfo(f"Standard Deviation of Position Error (before processing): {std_pos_error:.2f} cm")
+
+    # Apply z-axis rotation to the look-at orientations
+    orientations = apply_z_axis_rotation(look_at_matrices, num_circles, samples_per_circle)
+    rospy.loginfo(f"Generated {len(orientations)} orientations")
+
+    avg_orient_error, std_orient_error = calculate_orientation_error(orientations, desired_orientation)
+    rospy.loginfo(f"Average Orientation Error (before processing): {avg_orient_error:.2f} degrees")
+    rospy.loginfo(f"Standard Deviation of Orientation Error (before processing): {std_orient_error:.2f}")
+
+    # Initialize controller object
     controller = Controller(desired_position, desired_orientation, config_path, method=args.method)
 
-    # Run visual servoing for each sample
-    for i in range(config['num_samples']):
-        print(f"\nProcessing sample {i + 1}/{config['num_samples']}")
+    # Verify array sizes before processing
+    if not (len(camera_positions) == len(orientations) == num_samples):
+        rospy.logerr(f"Array size mismatch: camera_positions={len(camera_positions)}, "
+                     f"orientations={len(orientations)}, num_samples={num_samples}")
+        return
 
-        if args.perturbation:
-            manage_gazebo_models(i + 1)
+    for i in range(num_samples):
+        rospy.loginfo(f"Processing sample {i + 1}/{num_samples}")
+
+        try:
+            if args.perturbation:
+                manage_gazebo_models(i + 1)
+                rospy.sleep(1)
+
+            # Set camera pose directly
+            set_camera_pose(camera_positions[i], orientations[i])
             rospy.sleep(1)
 
-        # Directly set the camera pose without best pose processing
-        set_camera_pose(camera_positions[i], orientations[i])
-        rospy.sleep(1)  # Wait for the pose to settle
+            # Run visual servoing
+            result = controller.run()
 
-        # Run servoing
-        result = controller.run()
+            # Check if result is None (indicating a failure)
+            if result is None:
+                rospy.logwarn(f"Sample {i + 1} failed - skipping")
+                # Add placeholder values for failed sample
+                final_positions.append(np.full_like(desired_position, np.nan))
+                final_quaternions.append(np.full_like(desired_orientation, np.nan))
+                convergence_flags.append(False)
+                position_errors.append(np.nan)
+                orientation_errors.append(np.nan)
+                all_position_histories.append(np.array([]))
+                all_orientation_histories.append(np.array([]))
+                all_iteration_histories.append(0)
+                lowest_position_errors.append(np.nan)
+                lowest_orientation_errors.append(np.nan)
+                all_average_velocities.append(np.array([]))
+                all_velocity_mean_100.append(np.array([]))
+                all_velocity_mean_10.append(np.array([]))
+                all_applied_velocity_x.append(np.array([]))
+                all_applied_velocity_y.append(np.array([]))
+                all_applied_velocity_z.append(np.array([]))
+                all_applied_velocity_roll.append(np.array([]))
+                all_applied_velocity_pitch.append(np.array([]))
+                all_applied_velocity_yaw.append(np.array([]))
+                continue
 
-        # Unpack results
-        (final_position, final_quaternion, converged,
-         position_error, orientation_error,
-         position_history, orientation_history, iteration_history,
-         lowest_position_error, lowest_orientation_error,
-         average_velocities, velocity_mean_100, velocity_mean_10,
-         vel_x, vel_y, vel_z, vel_roll, vel_pitch, vel_yaw) = result
+            (final_position, final_quaternion, converged, position_error, orientation_error,
+             position_history, orientation_history, iteration_history,
+             lowest_position_error, lowest_orientation_error,
+             average_velocities, velocity_mean_100, velocity_mean_10,
+             applied_velocity_x, applied_velocity_y, applied_velocity_z,
+             applied_velocity_roll, applied_velocity_pitch, applied_velocity_yaw) = result
 
-        # Store results
-        results['final_positions'].append(final_position)
-        results['final_quaternions'].append(final_quaternion)
-        results['convergence_flags'].append(converged)
-        results['position_errors'].append(position_error)
-        results['orientation_errors'].append(orientation_error)
-        results['position_histories'].append(position_history)
-        results['orientation_histories'].append(orientation_history)
-        results['iteration_histories'].append(iteration_history)
-        results['lowest_position_errors'].append(lowest_position_error)
-        results['lowest_orientation_errors'].append(lowest_orientation_error)
-        results['average_velocities'].append(average_velocities)
-        results['velocity_mean_100'].append(velocity_mean_100)
-        results['velocity_mean_10'].append(velocity_mean_10)
-        results['velocities']['x'].append(vel_x)
-        results['velocities']['y'].append(vel_y)
-        results['velocities']['z'].append(vel_z)
-        results['velocities']['roll'].append(vel_roll)
-        results['velocities']['pitch'].append(vel_pitch)
-        results['velocities']['yaw'].append(vel_yaw)
+            # Store results
+            final_positions.append(final_position)
+            final_quaternions.append(final_quaternion)
+            convergence_flags.append(converged)
+            position_errors.append(position_error)
+            orientation_errors.append(orientation_error)
+            all_position_histories.append(position_history)
+            all_orientation_histories.append(orientation_history)
+            all_iteration_histories.append(iteration_history)
+            lowest_position_errors.append(lowest_position_error)
+            lowest_orientation_errors.append(lowest_orientation_error)
+            all_average_velocities.append(average_velocities)
+            all_velocity_mean_100.append(velocity_mean_100)
+            all_velocity_mean_10.append(velocity_mean_10)
+            all_applied_velocity_x.append(applied_velocity_x)
+            all_applied_velocity_y.append(applied_velocity_y)
+            all_applied_velocity_z.append(applied_velocity_z)
+            all_applied_velocity_roll.append(applied_velocity_roll)
+            all_applied_velocity_pitch.append(applied_velocity_pitch)
+            all_applied_velocity_yaw.append(applied_velocity_yaw)
 
-    # Calculate execution time
+            rospy.loginfo(f"Completed sample {i + 1} (Converged: {converged})")
+
+        except Exception as e:
+            rospy.logerr(f"Error processing sample {i + 1}: {str(e)}")
+            # Add placeholder values for failed sample
+            final_positions.append(np.full_like(desired_position, np.nan))
+            final_quaternions.append(np.full_like(desired_orientation, np.nan))
+            convergence_flags.append(False)
+            position_errors.append(np.nan)
+            orientation_errors.append(np.nan)
+            all_position_histories.append(np.array([]))
+            all_orientation_histories.append(np.array([]))
+            all_iteration_histories.append(0)
+            lowest_position_errors.append(np.nan)
+            lowest_orientation_errors.append(np.nan)
+            all_average_velocities.append(np.array([]))
+            all_velocity_mean_100.append(np.array([]))
+            all_velocity_mean_10.append(np.array([]))
+            all_applied_velocity_x.append(np.array([]))
+            all_applied_velocity_y.append(np.array([]))
+            all_applied_velocity_z.append(np.array([]))
+            all_applied_velocity_roll.append(np.array([]))
+            all_applied_velocity_pitch.append(np.array([]))
+            all_applied_velocity_yaw.append(np.array([]))
+            continue
+
     end_time = time.time()
     total_execution_time = end_time - start_time
 
-    # Save results
+    # When saving results, include the config name and method in the filename
     config_name = os.path.splitext(os.path.basename(args.config))[0]
-    timestamp = time.strftime("%Y%m%d_%H%M%S")
-    results_filename = f"results_{config_name}_{timestamp}.npz"
+    method_name = args.method
+    results_filename = f"results_{config_name}_{method_name}.npz"
 
-    # Create data dictionary for saving
-    save_data = {
-        'initial_positions': camera_positions,
-        'initial_orientations': orientations,
-        'final_positions': np.array(results['final_positions']),
-        'final_quaternions': np.array(results['final_quaternions']),
-        'convergence_flags': np.array(results['convergence_flags']),
-        'position_errors': np.array(results['position_errors']),
-        'orientation_errors': np.array(results['orientation_errors']),
-        'position_histories': np.array(results['position_histories'], dtype=object),
-        'orientation_histories': np.array(results['orientation_histories'], dtype=object),
-        'iteration_histories': np.array(results['iteration_histories']),
-        'lowest_position_errors': np.array(results['lowest_position_errors']),
-        'lowest_orientation_errors': np.array(results['lowest_orientation_errors']),
-        'average_velocities': np.array(results['average_velocities'], dtype=object),
-        'velocity_mean_100': np.array(results['velocity_mean_100'], dtype=object),
-        'velocity_mean_10': np.array(results['velocity_mean_10'], dtype=object),
-        'velocities': {k: np.array(v, dtype=object) for k, v in results['velocities'].items()},
-        'total_execution_time': total_execution_time,
-        'config': config
-    }
+    # Save all data to a file
+    try:
+        np.savez(results_filename,
+                 initial_positions=camera_positions,
+                 initial_orientations=orientations,
+                 final_positions=np.array(final_positions),
+                 final_quaternions=np.array(final_quaternions),
+                 convergence_flags=np.array(convergence_flags),
+                 position_errors=np.array(position_errors),
+                 orientation_errors=np.array(orientation_errors),
+                 all_position_histories=np.array(all_position_histories, dtype=object),
+                 all_orientation_histories=np.array(all_orientation_histories, dtype=object),
+                 all_iteration_histories=np.array(all_iteration_histories),
+                 lowest_position_errors=np.array(lowest_position_errors),
+                 lowest_orientation_errors=np.array(lowest_orientation_errors),
+                 all_average_velocities=np.array(all_average_velocities, dtype=object),
+                 all_velocity_mean_100=np.array(all_velocity_mean_100, dtype=object),
+                 all_velocity_mean_10=np.array(all_velocity_mean_10, dtype=object),
+                 all_applied_velocity_x=np.array(all_applied_velocity_x, dtype=object),
+                 all_applied_velocity_y=np.array(all_applied_velocity_y, dtype=object),
+                 all_applied_velocity_z=np.array(all_applied_velocity_z, dtype=object),
+                 all_applied_velocity_roll=np.array(all_applied_velocity_roll, dtype=object),
+                 all_applied_velocity_pitch=np.array(all_applied_velocity_pitch, dtype=object),
+                 all_applied_velocity_yaw=np.array(all_applied_velocity_yaw, dtype=object),
+                 total_execution_time=total_execution_time)
 
-    np.savez(results_filename, **save_data)
-    print(f"\nResults saved to: {results_filename}")
+        rospy.loginfo(f"Results saved to {results_filename}")
+
+    except Exception as e:
+        rospy.logerr(f"Error saving results: {str(e)}")
+
+    # Calculate and display final statistics
+    try:
+        # Calculate orientation error after processing (excluding NaN values)
+        valid_quaternions = [q for q in final_quaternions if not np.any(np.isnan(q))]
+        if valid_quaternions:
+            avg_orient_error, std_orient_error = calculate_orientation_error(valid_quaternions, desired_orientation)
+            rospy.loginfo(f"Average Orientation Error (after processing): {avg_orient_error:.2f} degrees")
+            rospy.loginfo(f"Standard Deviation of Orientation Error (after processing): {std_orient_error:.2f} degrees")
+        else:
+            rospy.logwarn("No valid quaternions to calculate orientation error")
+
+        # Calculate average End Errors for converged samples (excluding NaN values)
+        valid_position_errors = [err for err, flag in zip(position_errors, convergence_flags)
+                                 if flag and not np.isnan(err)]
+        valid_orientation_errors = [err for err, flag in zip(orientation_errors, convergence_flags)
+                                    if flag and not np.isnan(err)]
+
+        if valid_position_errors:
+            avg_position_error = np.nanmean(valid_position_errors)
+            avg_orientation_error = np.nanmean(valid_orientation_errors)
+            rospy.loginfo(f"Average End Position Error (for converged samples): {avg_position_error:.2f} cm")
+            rospy.loginfo(f"Average End Orientation Error (for converged samples): {avg_orientation_error:.2f} degrees")
+            rospy.loginfo(f"Number of converged samples: {len(valid_position_errors)} out of {num_samples}")
+        else:
+            rospy.logwarn("No valid converged samples to calculate average errors")
+
+    except Exception as e:
+        rospy.logerr(f"Error calculating final statistics: {str(e)}")
+
+    rospy.loginfo(f"Total execution time: {total_execution_time:.2f} seconds")
 
 
 if __name__ == "__main__":

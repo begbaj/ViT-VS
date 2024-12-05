@@ -111,5 +111,5 @@ def print_npz_contents(file_path):
 
 # Usage
 if __name__ == "__main__":
-    file_path = "results_config_20241204_030936.npz"  # Replace with your file path if different
+    file_path = "results_config.npz"  # Replace with your file path if different
     print_npz_contents(file_path)
