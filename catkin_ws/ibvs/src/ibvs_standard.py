@@ -211,9 +211,9 @@ class Controller:
             self.initial_error_translation, self.initial_error_rotation = self.calculate_end_error(
                 self.desired_orientation)
 
-        # Check if current error is more than twice the initial error (divergence check)
+        # Check if current error is more than five times the initial error (divergence check)
         if current_error_translation > 5 * self.initial_error_translation:
-            rospy.logerr("Aborting sample due to position error exceeding five the initial error.")
+            rospy.logerr("Aborting sample due to position error exceeding five times the initial error.")
             return True, False  # Done but not converged
 
         # Error-based convergence checks
@@ -324,13 +324,13 @@ class Controller:
             return None, None
 
         try:
-            # Resize images to the input size
-            goal_image_resized = np.array(self.goal_image.resize((self.dino_input_size, self.dino_input_size)))
-            current_image_resized = np.array(self.latest_pil_image.resize((self.dino_input_size, self.dino_input_size)))
+            # Use original resolution images
+            goal_image_processed = np.array(self.goal_image)
+            current_image_processed = np.array(self.latest_pil_image)
 
             # Convert images to grayscale
-            goal_gray = cv2.cvtColor(goal_image_resized, cv2.COLOR_RGB2GRAY)
-            current_gray = cv2.cvtColor(current_image_resized, cv2.COLOR_RGB2GRAY)
+            goal_gray = cv2.cvtColor(goal_image_processed, cv2.COLOR_RGB2GRAY)
+            current_gray = cv2.cvtColor(current_image_processed, cv2.COLOR_RGB2GRAY)
 
             # Initialize detector based on method
             if self.method == 'sift':
@@ -396,13 +396,16 @@ class Controller:
 
                 # Visualize correspondences
                 self.visualize_correspondences_with_lines(
-                    goal_image_resized,
-                    current_image_resized,
+                    goal_image_processed,
+                    current_image_processed,
                     points1,
                     points2
                 )
 
-                return self.calculate_uv(points1.tolist(), points2.tolist()), None
+                # Create arrays directly from the detected points
+                s_uv_star = np.round(points1).astype(int)
+                s_uv = np.round(points2).astype(int)
+                return (s_uv_star, s_uv), None  # Return tuple with None as second element to match expected format
 
             except Exception as e:
                 rospy.logerr(f"Error extracting point locations: {str(e)}")
@@ -410,54 +413,6 @@ class Controller:
 
         except Exception as e:
             rospy.logerr(f"Error in detect_features: {str(e)}")
-            return None, None
-
-    def calculate_uv(self, goal_features, current_features):
-        """Calculate feature points and scale them to the real image resolution."""
-        try:
-            if goal_features is None or current_features is None:
-                rospy.logwarn("Received None features in calculate_uv")
-                return None, None
-
-            if len(goal_features) == 0 or len(current_features) == 0:
-                rospy.logwarn("Received empty feature lists in calculate_uv")
-                return None, None
-
-            if len(goal_features) != len(current_features):
-                rospy.logwarn("Mismatched number of features between goal and current")
-                return None, None
-
-            num_available_pairs = len(goal_features)
-            if num_available_pairs < 4:
-                rospy.logwarn(f"Insufficient feature pairs: {num_available_pairs} (minimum 4 required)")
-                return None, None
-
-            # Use available pairs, but no more than requested
-            num_pairs = min(num_available_pairs, self.num_pairs)
-            if num_pairs < self.num_pairs:
-                rospy.loginfo(f"Using {num_pairs} feature pairs (originally requested {self.num_pairs})")
-
-            s_uv = np.zeros([num_pairs, 2], dtype=int)
-            s_uv_star = np.zeros([num_pairs, 2], dtype=int)
-
-            # Scale factors to convert from input size to original image size
-            scale_x = self.u_max / self.dino_input_size
-            scale_y = self.v_max / self.dino_input_size
-
-            for count in range(num_pairs):
-                if len(goal_features[count]) != 2 or len(current_features[count]) != 2:
-                    rospy.logwarn("Invalid feature point format")
-                    return None, None
-
-                s_uv_star[count, 0] = round(goal_features[count][0] * scale_x)
-                s_uv_star[count, 1] = round(goal_features[count][1] * scale_y)
-                s_uv[count, 0] = round(current_features[count][0] * scale_x)
-                s_uv[count, 1] = round(current_features[count][1] * scale_y)
-
-            return s_uv_star, s_uv
-
-        except Exception as e:
-            rospy.logerr(f"Error in calculate_uv: {str(e)}")
             return None, None
 
     def publish_figure(self, fig, publisher):
@@ -494,7 +449,6 @@ class Controller:
         return z_values_meter
 
     def ibvs(self):
-        """Image Based Visual Servoing Method."""
         if self.latest_image is None:
             print("No latest image available")
             return False
@@ -508,7 +462,7 @@ class Controller:
                 rospy.logerr(
                     f"Current error ({current_error_translation:.2f} cm) exceeds five times the initial error ({self.initial_error_translation:.2f} cm). Aborting sample.")
                 return False
-
+            
         try:
             (s_uv_star, s_uv), _ = self.detect_features()
             if s_uv_star is None or s_uv is None:
@@ -798,30 +752,39 @@ class Controller:
         ax1 = fig.add_subplot(121)
         ax2 = fig.add_subplot(122)
 
+        # Display images
         ax1.imshow(goal_image)
         ax2.imshow(current_image)
 
-        # Convert points to numpy if they're tensors
-        points1_np = np.array(points1)
-        points2_np = np.array(points2)
+        # Force the aspect ratio and limits
+        ax1.set_aspect('equal')
+        ax2.set_aspect('equal')
+
+        # Set the exact limits for both axes
+        ax1.set_xlim([0, 640])
+        ax1.set_ylim([480, 0])  # Inverted because origin is at top-left
+        ax2.set_xlim([0, 640])
+        ax2.set_ylim([480, 0])  # Inverted because origin is at top-left
 
         # Plot correspondences with rainbow colors
-        colors = plt.cm.rainbow(np.linspace(0, 1, len(points1_np)))
-        for i, ((y1, x1), (y2, x2), color) in enumerate(zip(points1_np, points2_np, colors)):
-            # Plot points and labels
-            ax1.plot(x1, y1, 'o', color=color, markersize=8)
-            ax1.text(x1 + 5, y1 + 5, str(i), color=color, fontsize=8)
+        colors = plt.cm.rainbow(np.linspace(0, 1, len(points1)))
+        for i, ((x1, y1), (x2, y2), color) in enumerate(zip(points1, points2, colors)):
+            # Only plot points that are within bounds
+            if 0 <= x1 <= 640 and 0 <= y1 <= 480 and 0 <= x2 <= 640 and 0 <= y2 <= 480:
+                # Plot points and labels
+                ax1.plot(x1, y1, 'o', color=color, markersize=8)
+                ax1.text(min(x1 + 5, 635), min(y1 + 5, 475), str(i), color=color, fontsize=8)
 
-            ax2.plot(x2, y2, 'o', color=color, markersize=8)
-            ax2.text(x2 + 5, y2 + 5, str(i), color=color, fontsize=8)
+                ax2.plot(x2, y2, 'o', color=color, markersize=8)
+                ax2.text(min(x2 + 5, 635), min(y2 + 5, 475), str(i), color=color, fontsize=8)
 
-            # Draw correspondence lines
-            con = ConnectionPatch(
-                xyA=(x1, y1), xyB=(x2, y2),
-                coordsA="data", coordsB="data",
-                axesA=ax1, axesB=ax2, color=color, alpha=0.5
-            )
-            fig.add_artist(con)
+                # Draw correspondence lines
+                con = ConnectionPatch(
+                    xyA=(x1, y1), xyB=(x2, y2),
+                    coordsA="data", coordsB="data",
+                    axesA=ax1, axesB=ax2, color=color, alpha=0.5
+                )
+                fig.add_artist(con)
 
         ax1.set_title("Goal Image")
         ax2.set_title("Current Image")
@@ -1474,10 +1437,10 @@ def main(args):
     end_time = time.time()
     total_execution_time = end_time - start_time
 
-    # When saving results, include the config name and method in the filename
     config_name = os.path.splitext(os.path.basename(args.config))[0]
     method_name = args.method
-    results_filename = f"results_{config_name}_{method_name}.npz"
+    perturbation_str = "perturbed" if args.perturbation else "standard"
+    results_filename = f"results_{config_name}_{method_name}_{perturbation_str}.npz"
 
     # Save all data to a file
     try:
