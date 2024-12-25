@@ -357,7 +357,7 @@ class Controller:
 
         # Check if current error is more than twice the initial error (divergence check)
         if current_error_translation > 2 * self.initial_error_translation:
-            rospy.logerr("Aborting sample to position error exceeding five times the initial error.")
+            rospy.logerr("Aborting sample due to position error exceeding twice the initial error.")
             return True, False  # Done but not converged
 
         # Error-based convergence checks
@@ -901,8 +901,8 @@ class Controller:
             )
             fig.add_artist(con)
 
-        ax1.set_title("Goal Image")
-        ax2.set_title("Current Image")
+        ax1.axis('off')
+        ax2.axis('off')
         plt.tight_layout()
 
         # Convert figure to image and publish
@@ -1485,7 +1485,8 @@ def main(args):
 
     # When saving results, include the config name in the filename
     config_name = os.path.splitext(os.path.basename(args.config))[0]
-    results_filename = f"results_{config_name}.npz"
+    perturbation_str = "perturbed" if args.perturbation else "standard"
+    results_filename = f"results_{config_name}_dino_{perturbation_str}.npz"
 
     # Save all data to a file
     try:
