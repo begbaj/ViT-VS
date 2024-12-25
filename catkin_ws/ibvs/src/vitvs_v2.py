@@ -357,7 +357,7 @@ class Controller:
 
         # Check if current error is more than twice the initial error (divergence check)
         if current_error_translation > 2 * self.initial_error_translation:
-            rospy.logerr("Aborting sample due to position error exceeding twice the initial error.")
+            rospy.logerr("Aborting sample to position error exceeding five times the initial error.")
             return True, False  # Done but not converged
 
         # Error-based convergence checks

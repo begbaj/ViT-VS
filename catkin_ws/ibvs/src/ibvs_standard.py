@@ -212,8 +212,8 @@ class Controller:
                 self.desired_orientation)
 
         # Check if current error is more than twice the initial error (divergence check)
-        if current_error_translation > 2 * self.initial_error_translation:
-            rospy.logerr("Aborting sample due to position error exceeding twice the initial error.")
+        if current_error_translation > 5 * self.initial_error_translation:
+            rospy.logerr("Aborting sample due to position error exceeding five the initial error.")
             return True, False  # Done but not converged
 
         # Error-based convergence checks
@@ -504,9 +504,9 @@ class Controller:
         # Check current error
         current_error_translation, _ = self.calculate_end_error(self.desired_orientation)
         if hasattr(self, 'initial_error_translation'):
-            if current_error_translation > 2 * self.initial_error_translation:
+            if current_error_translation > 5 * self.initial_error_translation:
                 rospy.logerr(
-                    f"Current error ({current_error_translation:.2f} cm) exceeds twice the initial error ({self.initial_error_translation:.2f} cm). Aborting sample.")
+                    f"Current error ({current_error_translation:.2f} cm) exceeds five times the initial error ({self.initial_error_translation:.2f} cm). Aborting sample.")
                 return False
 
         try:
