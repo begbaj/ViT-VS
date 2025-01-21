@@ -93,7 +93,7 @@ class LengthRatioCalculator:
         }
 
 def main():
-    calculator = LengthRatioCalculator('results_config.npz')
+    calculator = LengthRatioCalculator('results_config_standard_akaze_perturbed.npz')
     results = calculator.calculate_overall_length_ratios()
     
     print("\nOverall Length Ratio Results:")

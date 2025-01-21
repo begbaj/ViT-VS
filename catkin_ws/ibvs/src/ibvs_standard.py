@@ -98,7 +98,7 @@ class Controller:
         self.v_c = None
         self.iteration_count = 0
 
-        # Histories and tracking variables
+       # Histories and tracking variables
         self.velocity_history = []
         self.position_history = []
         self.orientation_history = []
@@ -354,8 +354,8 @@ class Controller:
                 rospy.logwarn("No descriptors found in one or both images")
                 return None, None
 
-            rospy.loginfo(
-                f"{self.method.upper()} found {len(kp1)} keypoints in goal image and {len(kp2)} keypoints in current image")
+            #rospy.loginfo(
+            #    f"{self.method.upper()} found {len(kp1)} keypoints in goal image and {len(kp2)} keypoints in current image")
 
             # Initialize BF matcher with appropriate norm type
             bf = cv2.BFMatcher(norm_type, crossCheck=True)
@@ -384,8 +384,8 @@ class Controller:
                 rospy.logwarn("Not enough good matches for visual servoing")
                 return None, None
 
-            if num_pairs_to_use < self.num_pairs:
-                rospy.logwarn(f"Using reduced number of features: {num_pairs_to_use} (requested: {self.num_pairs})")
+            #if num_pairs_to_use < self.num_pairs:
+            #    rospy.logwarn(f"Using reduced number of features: {num_pairs_to_use} (requested: {self.num_pairs})")
 
             # Select top matches
             matches = matches[:num_pairs_to_use]

@@ -17,7 +17,7 @@ thresh_filter_keypoints: 1
 use_feature_binning: true  # Add this line
 
 # Sampling parameters
-num_samples: 100
+num_samples: 500
 num_circles: 4
 circle_radius_aug: 0.08
 

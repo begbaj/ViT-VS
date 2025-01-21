@@ -72,7 +72,7 @@ run_configuration() {
 
 # Parse command line arguments
 METHOD=""
-CONFIG="config.yaml"  # Default configuration file
+CONFIG="config2.yaml"  # Default configuration file
 PERTURBATION=false    # Default perturbation setting
 
 while [[ $# -gt 0 ]]; do

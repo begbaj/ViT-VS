@@ -165,7 +165,7 @@ def print_sample_data(npz_file: str, num_samples: int = 5):
 
 
 def main():
-    npz_file = 'results_config.npz'
+    npz_file = 'results_config_standard_akaze_perturbed.npz'
     
     # First, print detailed sample data
     print("Analyzing sample data...")
