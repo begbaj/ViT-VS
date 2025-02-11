@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="VcsDirectoryMappings">
-    <mapping directory="$PROJECT_DIR$/ibvs/src/dino-vit-features" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/.." vcs="Git" />
     <mapping directory="$PROJECT_DIR$/realsense2_description" vcs="Git" />
     <mapping directory="$PROJECT_DIR$/realsense_gazebo_plugin" vcs="Git" />
   </component>

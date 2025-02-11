@@ -111,5 +111,5 @@ def print_npz_contents(file_path):
 
 # Usage
 if __name__ == "__main__":
-    file_path = "results_config_standard_akaze_perturbed.npz"  # Replace with your file path if different
+    file_path = "results_config_standard_dino_perturbed_better.npz.npz"  # Replace with your file path if different
     print_npz_contents(file_path)
