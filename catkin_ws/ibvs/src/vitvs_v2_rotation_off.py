@@ -497,11 +497,18 @@ class Controller:
                 num_pairs=self.num_pairs
             )
 
+<<<<<<< Updated upstream
             if points1 is None or points2 is None or len(points1) < 4:
                 self.feature_failure_count += 1
                 if self.feature_failure_count >= 10:
                     rospy.logerr(
                         "Feature detection failed or insufficient features (<4) for 10 consecutive iterations - aborting sample")
+=======
+            if points1 is None or points2 is None:
+                self.feature_failure_count += 1
+                if self.feature_failure_count >= 10:
+                    rospy.logerr("Feature detection failed 10 times in a row - aborting sample")
+>>>>>>> Stashed changes
                     raise RuntimeError("Persistent feature detection failure")
                 return None, None
 
