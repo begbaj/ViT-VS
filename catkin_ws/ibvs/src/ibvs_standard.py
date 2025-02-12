@@ -486,6 +486,7 @@ class Controller:
             e = e.reshape((len(s_xy) * 2, 1))
 
             Z = self.get_depth(s_uv)
+
             if Z is None:
                 if hasattr(self, 'v_c') and self.v_c is not None:
                     rospy.logwarn("Depth information unavailable - continuing with last known velocities")
@@ -674,6 +675,8 @@ class Controller:
 
                 # Check if servoing is done
                 done, converged = self.is_visual_servoing_done()
+
+
                 if done:
                     rospy.loginfo(f"Visual servoing completed after {self.iteration_count} iterations.")
                     rospy.loginfo(f"Converged: {converged}")
@@ -898,37 +901,6 @@ def calculate_position_error(positions, desired_position):
     average_error = np.mean(errors) * 100  # Convert to centimeters
     std_deviation = np.std(errors) * 100  # Convert to centimeters
     return average_error, std_deviation
-
-
-def detect_trend(data, window_size=100, consecutive_increases=5):
-    """
-    Detect if there's an increasing trend in the data.
-
-    Args:
-    data (array): Input data
-    window_size (int): Size of the sliding window for linear regression
-    consecutive_increases (int): Number of consecutive positive slopes required to confirm trend
-
-    Returns:
-    tuple: (bool indicating if trend is increasing, index where trend starts)
-    """
-    slopes = []
-    for i in range(len(data) - window_size):
-        y = data[i:i + window_size]
-        x = np.arange(window_size)
-        slope, _, _, _, _ = stats.linregress(x, y)
-        slopes.append(slope)
-
-    increasing_count = 0
-    for i, slope in enumerate(slopes):
-        if slope > 0:
-            increasing_count += 1
-            if increasing_count >= consecutive_increases:
-                return True, i + window_size - consecutive_increases
-        else:
-            increasing_count = 0
-
-    return False, -1
 
 
 def calculate_orientation_error(quaternion_list, desired_orientation):
