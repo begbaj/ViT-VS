@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import argparse
 
 def print_npz_contents(file_path):
     """
@@ -54,8 +55,6 @@ def print_npz_contents(file_path):
             all_velocity_mean_100 = value
         elif key == "all_velocity_mean_10":
             all_velocity_mean_10 = value
-        
-
 
     # Calculate statistics for converged samples
     if convergence_flags is not None and position_errors is not None and orientation_errors is not None:
@@ -99,17 +98,27 @@ def print_npz_contents(file_path):
     if "total_execution_time" in data:
         print(f"\nTotal Execution Time: {data['total_execution_time']:.2f} seconds")
 
-    # New section: Analyze average velocities at specific points
+    # Velocity Analysis
     if all_average_velocities is not None and convergence_flags is not None:
         print("\nVelocity Analysis:")
         print("------------------")
 
-        lowest_velocities = []
-        final_mean_10_velocities = []
-        final_mean_100_velocities = []
+def main():
+    parser = argparse.ArgumentParser(description='Analyze contents of an NPZ file')
+    parser.add_argument('file_path', type=str, help='Path to the NPZ file')
+    args = parser.parse_args()
 
+    if not os.path.exists(args.file_path):
+        print(f"Error: File '{args.file_path}' does not exist.")
+        return
 
-# Usage
+    if not args.file_path.endswith('.npz'):
+        print(f"Warning: File '{args.file_path}' does not have .npz extension.")
+
+    try:
+        print_npz_contents(args.file_path)
+    except Exception as e:
+        print(f"Error processing file: {str(e)}")
+
 if __name__ == "__main__":
-    file_path = "results_config_standard_dino_perturbed_better.npz.npz"  # Replace with your file path if different
-    print_npz_contents(file_path)
+    main()
