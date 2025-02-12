@@ -104,4 +104,7 @@ Create the perturbed models:
 ```bash
    python3 generate_perturbed_models.py
 ```
-  
+To inspect a .npz file run:
+```bash
+   python3 npzviewer.py results_config_sift_standard.npz 
+```
