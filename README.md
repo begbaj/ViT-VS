@@ -97,3 +97,11 @@ To enable Gazebo GUI:
 Connecting another shell to the docker container:
 ```bash
    docker exec -ti viso bash
+```
+Create the perturbed models:
+- inside the container go to "~/catkin_ws/src/ibvs"
+- run:
+```bash
+   python3 generate_perturbed_models.py
+´´´
+  
