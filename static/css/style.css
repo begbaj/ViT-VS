@@ -65,8 +65,32 @@ figcaption {
 }
 
 /* Experiment tabs */
-.tabs li.is-active a {
+.experiment-tabs {
+  margin: 2rem 0 1rem;
+}
+
+.experiment-tabs ul {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.experiment-tabs li {
+  margin: 0.3rem;
+  flex-grow: 1;
+  max-width: 200px;
+}
+
+.experiment-tabs li a {
+  border-radius: 6px !important;
+  padding: 0.75rem 1rem;
+  height: auto;
+  transition: all 0.2s ease;
+}
+
+.experiment-tabs li.is-active a {
   font-weight: 600;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
 .tab-content {

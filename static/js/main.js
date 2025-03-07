@@ -68,8 +68,8 @@ $(document).ready(function() {
     });
   });
 
-  // Lazy load videos when tab is clicked
-  $('.tabs li').on('click', function() {
+  // Lazy load videos when experiment button is clicked
+  $('.experiment-buttons .button').on('click', function() {
     const targetId = $(this).data('target');
     const video = $('#' + targetId + ' video')[0];
     
