@@ -134,12 +134,12 @@
         <div class="column is-four-fifths">
           <h2 class="title is-3">Method Overview</h2>
           <div class="content has-text-justified">
-            <figure class="image">
-              <img src="static/images/method.jpg" alt="ViT-VS Methodology">
-              <figcaption class="has-text-centered mt-2">
-                ViT-VS Overview: The visual servoing control loop integrating initial rotation compensation and IBVS control with ViT correspondences and velocity stabilization.
-              </figcaption>
-            </figure>
+            <div class="video-container has-text-centered">
+              <video controls autoplay loop muted class="has-ratio" width="100%">
+                <source src="static/videos/intro.mp4" type="video/mp4">
+                Your browser does not support the video tag.
+              </video>
+            </div>
             <p class="mt-4">
               Our ViT-VS approach combines Vision Transformer (ViT) correspondence matching with classical image-based visual servoing (IBVS) principles. The methodology addresses key challenges of using pretrained ViTs for robotic control, including rotation invariance compensation and velocity stabilization for smoother trajectories.
             </p>
@@ -157,25 +157,7 @@
       <!-- Tabs for different experiments -->
       <div class="tabs is-centered is-boxed experiment-tabs">
         <ul>
-          <li class="is-active" data-target="simulation-tab">
-            <a>
-              <span class="icon is-small"><i class="fas fa-vr-cardboard"></i></span>
-              <span>Simulation</span>
-            </a>
-          </li>
-          <li data-target="industrial-tab">
-            <a>
-              <span class="icon is-small"><i class="fas fa-industry"></i></span>
-              <span>Industrial Use-Case</span>
-            </a>
-          </li>
-          <li data-target="positioning-tab">
-            <a>
-              <span class="icon is-small"><i class="fas fa-robot"></i></span>
-              <span>End-Effector Positioning</span>
-            </a>
-          </li>
-          <li data-target="grasping-tab">
+          <li data-target="grasping-tab" class="is-active">
             <a>
               <span class="icon is-small"><i class="fas fa-hand-rock"></i></span>
               <span>Category-Level Grasping</span>
@@ -187,111 +169,36 @@
               <span>Category-Level Sorting</span>
             </a>
           </li>
+          <li data-target="industrial-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-industry"></i></span>
+              <span>Industrial Use-Case</span>
+            </a>
+          </li>
+          <li data-target="positioning-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-robot"></i></span>
+              <span>Detailed Experiment</span>
+            </a>
+          </li>
+          <li data-target="simulation-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-vr-cardboard"></i></span>
+              <span>Simulation</span>
+            </a>
+          </li>
         </ul>
       </div>
       
       <!-- Tab content for different experiments -->
       <div class="tab-contents">
-        <!-- Simulation Experiments -->
-        <div id="simulation-tab" class="tab-content is-active">
-          <div class="columns is-centered">
-            <div class="column is-four-fifths">
-              <h3 class="title is-4">Simulation Experiments</h3>
-              <div class="video-container has-text-centered">
-                <video controls class="has-ratio" width="100%">
-                  <source src="static/videos/simulation.mp4" type="video/mp4">
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-              <div class="content mt-4">
-                <p>
-                  Our approach achieves full convergence in unperturbed scenarios and surpasses classical image-based visual servoing by up to 31.2% relative improvement in perturbed scenarios. Even the convergence rates of learning-based methods are matched despite requiring no task- or object-specific training.
-                </p>
-                <table class="table is-fullwidth">
-                  <thead>
-                    <tr>
-                      <th>Method</th>
-                      <th>Convergence Rate</th>
-                      <th>End Error</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>ViT-VS (ours)</td>
-                      <td>100.0% / 76.6%</td>
-                      <td>18.62±10.69mm / 1.50±0.78°</td>
-                    </tr>
-                    <tr>
-                      <td>Classical IBVS</td>
-                      <td>89.6% / 58.4%</td>
-                      <td>3.32±1.49mm / 0.25±0.12°</td>
-                    </tr>
-                    <tr>
-                      <td>Deep Learning-based</td>
-                      <td>100.0% / 76.0%</td>
-                      <td>0.04±0.03mm / 0.00±0.00°</td>
-                    </tr>
-                  </tbody>
-                  <caption>Comparison with unperturbed/perturbed scenarios</caption>
-                </table>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- Industrial Use-Case -->
-        <div id="industrial-tab" class="tab-content">
-          <div class="columns is-centered">
-            <div class="column is-four-fifths">
-              <h3 class="title is-4">Industrial Box Manipulation</h3>
-              <div class="video-container has-text-centered">
-                <video controls class="has-ratio" width="100%">
-                  <source src="static/videos/industrial.mp4" type="video/mp4">
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-              <div class="content mt-4">
-                <p>
-                  We demonstrate industrial box manipulation with 100% success rate (n = 20) on a mobile robot with a starting point positioning error of ±10cm. This experiment shows the robustness of our approach in real-world industrial scenarios.
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-        
-        <!-- End-Effector Positioning -->
-        <div id="positioning-tab" class="tab-content">
-          <div class="columns is-centered">
-            <div class="column is-four-fifths">
-              <h3 class="title is-4">End-Effector Positioning</h3>
-              <div class="video-container has-text-centered">
-                <video controls class="has-ratio" width="100%">
-                  <source src="static/videos/positioning.mp4" type="video/mp4">
-                  Your browser does not support the video tag.
-                </video>
-              </div>
-              <div class="content mt-4">
-                <p>
-                  This experiment demonstrates real-world evaluation on the "hollywood poster" for 1500 iterations. We visualize the initial image, the desired image, and the final image along with camera velocities and position and rotation errors, showcasing full convergence from a partially visible and heavily rotated initial position.
-                </p>
-                <figure class="image">
-                  <img src="static/images/positioning_graph.jpg" alt="End-Effector Positioning Experiment">
-                  <figcaption class="has-text-centered mt-2">
-                    Detailed robotic experiment: Camera velocities and pose difference over iterations.
-                  </figcaption>
-                </figure>
-              </div>
-            </div>
-          </div>
-        </div>
-        
         <!-- Category-Level Grasping -->
-        <div id="grasping-tab" class="tab-content">
+        <div id="grasping-tab" class="tab-content is-active">
           <div class="columns is-centered">
             <div class="column is-four-fifths">
               <h3 class="title is-4">Category-Level Object Grasping</h3>
               <div class="video-container has-text-centered">
-                <video controls class="has-ratio" width="100%">
+                <video controls autoplay loop muted class="has-ratio" width="100%">
                   <source src="static/videos/grasping.mp4" type="video/mp4">
                   Your browser does not support the video tag.
                 </video>
@@ -337,7 +244,7 @@
             <div class="column is-four-fifths">
               <h3 class="title is-4">Category-Level Object Sorting</h3>
               <div class="video-container has-text-centered">
-                <video controls class="has-ratio" width="100%">
+                <video controls autoplay loop muted class="has-ratio" width="100%">
                   <source src="static/videos/sorting.mp4" type="video/mp4">
                   Your browser does not support the video tag.
                 </video>
@@ -346,15 +253,91 @@
                 <p>
                   Building on our category-level grasping capabilities, we demonstrate a complete pick-and-place sorting task using only reference images from each category. The system identifies unseen objects from the same categories and successfully sorts them into designated locations with a high success rate.
                 </p>
-                <figure class="image">
-                  <img src="static/images/sorting.jpg" alt="Category-Level Sorting Results">
-                  <figcaption class="has-text-centered mt-2">
-                    Category-level sorting demonstration: Reference objects (left) and unseen objects successfully sorted (right).
-                  </figcaption>
-                </figure>
                 <p>
                   This experiment highlights the practical application of our ViT-VS approach in a realistic object manipulation scenario, demonstrating how pretrained vision transformers can enable generalized robotic manipulation without task-specific training.
                 </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Industrial Use-Case -->
+        <div id="industrial-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Industrial Box Manipulation</h3>
+              <div class="video-container has-text-centered">
+                <video controls autoplay loop muted class="has-ratio" width="100%">
+                  <source src="static/videos/industrial.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  We demonstrate industrial box manipulation with 100% success rate (n = 20) on a mobile robot with a starting point positioning error of ±10cm. This experiment shows the robustness of our approach in real-world industrial scenarios.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Detailed Experiment -->
+        <div id="positioning-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Detailed Experiment</h3>
+              <div class="video-container has-text-centered">
+                <video controls autoplay loop muted class="has-ratio" width="100%">
+                  <source src="static/videos/positioning.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  This experiment demonstrates real-world evaluation on the "hollywood poster" for 1500 iterations. We visualize the initial image, the desired image, and the final image along with camera velocities and position errors, showcasing full convergence from a partially visible and heavily rotated initial position.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Simulation Experiments -->
+        <div id="simulation-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Simulation Experiments</h3>
+              <div class="video-container has-text-centered">
+                <video controls autoplay loop muted class="has-ratio" width="100%">
+                  <source src="static/videos/simulation.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  Our approach achieves full convergence in unperturbed scenarios and surpasses classical image-based visual servoing by up to 31.2% relative improvement in perturbed scenarios. Even the convergence rates of learning-based methods are matched despite requiring no task- or object-specific training.
+                </p>
+                <table class="table is-fullwidth">
+                  <thead>
+                    <tr>
+                      <th>Method</th>
+                      <th>Convergence Rate (Unperturbed/Perturbed)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>ViT-VS (ours)</td>
+                      <td>100.0% / 76.6%</td>
+                    </tr>
+                    <tr>
+                      <td>Classical IBVS</td>
+                      <td>89.6% / 58.4%</td>
+                    </tr>
+                    <tr>
+                      <td>Deep Learning-based</td>
+                      <td>100.0% / 76.0%</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
