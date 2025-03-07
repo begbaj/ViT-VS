@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>ViT-VS</title>
+  <title>ViT-VS: Generalizable Visual Servoing with Vision Transformers</title>
   
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="static/images/favicon.png">
@@ -29,23 +29,32 @@
         <div class="columns is-centered">
           <div class="column has-text-centered">
             <h1 class="title is-1 publication-title">ViT-VS</h1>
-            <h2 class="title is-3 publication-title">Your Project Subtitle Here</h2>
+            <h2 class="title is-3 publication-title">On the Applicability of Pretrained Vision Transformer Features for Generalizable Visual Servoing</h2>
             
             <!-- Authors -->
             <div class="is-size-5 publication-authors">
               <span class="author-block">
-                <a href="#">Author 1</a><sup>1</sup>
+                <a href="#">Alessandro Scherl</a><sup>1,2</sup>
               </span>
               <span class="author-block">
-                <a href="#">Author 2</a><sup>1</sup>
+                <a href="#">Stefan Thalhammer</a><sup>2</sup>
               </span>
-              <!-- Add more authors as needed -->
+              <span class="author-block">
+                <a href="#">Bernhard Neuberger</a><sup>2</sup>
+              </span>
+              <span class="author-block">
+                <a href="#">Wilfried Wöber</a><sup>2</sup>
+              </span>
+              <span class="author-block">
+                <a href="#">José García-Rodríguez</a><sup>1</sup>
+              </span>
             </div>
 
             <!-- Affiliations -->
-            <div class="is-size-5 publication-authors">
-              <span class="author-block"><sup>1</sup>Your University/Institution</span>
-              <!-- Add more affiliations as needed -->
+            <div class="is-size-6 publication-affiliations">
+              <span class="affiliation-block"><sup>1</sup>Department of Computer Technology, University of Alicante, Spain</span>
+              <br>
+              <span class="affiliation-block"><sup>2</sup>Industrial Engineering Department, UAS Technikum Vienna, Austria</span>
             </div>
 
             <!-- Links/Buttons -->
@@ -53,7 +62,7 @@
               <div class="publication-links">
                 <!-- Paper Link -->
                 <span class="link-block">
-                  <a href="#" class="external-link button is-normal is-rounded is-dark">
+                  <a href="https://arxiv.org/abs/2503.04545" target="_blank" class="external-link button is-normal is-rounded is-dark">
                     <span class="icon">
                       <i class="fas fa-file-pdf"></i>
                     </span>
@@ -63,7 +72,7 @@
                 
                 <!-- Code Link -->
                 <span class="link-block">
-                  <a href="https://github.com/AlessandroScherl/ViT-VS" class="external-link button is-normal is-rounded is-dark">
+                  <a href="https://github.com/AlessandroScherl/ViT-VS" target="_blank" class="external-link button is-normal is-rounded is-dark">
                     <span class="icon">
                       <i class="fab fa-github"></i>
                     </span>
@@ -71,7 +80,15 @@
                   </a>
                 </span>
                 
-                <!-- Add more links as needed -->
+                <!-- Citation -->
+                <span class="link-block">
+                  <a href="#" id="cite-button" class="external-link button is-normal is-rounded is-dark">
+                    <span class="icon">
+                      <i class="fas fa-quote-right"></i>
+                    </span>
+                    <span>Cite</span>
+                  </a>
+                </span>
               </div>
             </div>
           </div>
@@ -80,16 +97,16 @@
     </div>
   </section>
 
-  <!-- Teaser Video/Image Section -->
+  <!-- Teaser Image Section -->
   <section class="hero teaser">
     <div class="container is-max-desktop">
       <div class="hero-body">
-        <video id="teaser" autoplay muted loop playsinline width="100%">
-          <source src="static/images/teaser.mp4" type="video/mp4">
-        </video>
-        <h2 class="subtitle has-text-centered">
-          Brief description of what we're seeing in the teaser
-        </h2>
+        <figure class="image">
+          <img src="static/images/teaser.jpg" alt="ViT-VS Teaser">
+          <figcaption class="has-text-centered mt-2">
+            ViT-VS category-level object grasping. Left: ViT Correspondence Matching process with white mug as desired image. Right: Successful grasp of the target object.
+          </figcaption>
+        </figure>
       </div>
     </div>
   </section>
@@ -102,7 +119,7 @@
           <h2 class="title is-3">Abstract</h2>
           <div class="content has-text-justified">
             <p>
-              Your abstract text goes here. Explain your research, methods, and key findings.
+              Visual servoing enables robots to precisely position their end-effector relative to a target object. While classical methods rely on hand-crafted features and thus are universally applicable without task-specific training, they often struggle with occlusions and environmental variations, whereas learning-based approaches improve robustness but typically require extensive training. We present a visual servoing approach that leverages pretrained vision transformers for semantic feature extraction, combining the advantages of both paradigms while also being able to generalize beyond the provided sample. Our approach achieves full convergence in unperturbed scenarios and surpasses classical image-based visual servoing by up to 31.2% relative improvement in perturbed scenarios. Even the convergence rates of learning-based methods are matched despite requiring no task- or object-specific training. Real-world evaluations confirm robust performance in end-effector positioning, industrial box manipulation, and grasping of unseen objects using only a reference from the same category.
             </p>
           </div>
         </div>
@@ -110,15 +127,243 @@
     </div>
   </section>
 
-  <!-- Additional sections like Method, Results, etc. -->
-  <!-- You can add these later as needed -->
+  <!-- Method Overview -->
+  <section class="section">
+    <div class="container is-max-desktop">
+      <div class="columns is-centered has-text-centered">
+        <div class="column is-four-fifths">
+          <h2 class="title is-3">Method Overview</h2>
+          <div class="content has-text-justified">
+            <figure class="image">
+              <img src="static/images/method.jpg" alt="ViT-VS Methodology">
+              <figcaption class="has-text-centered mt-2">
+                ViT-VS Overview: The visual servoing control loop integrating initial rotation compensation and IBVS control with ViT correspondences and velocity stabilization.
+              </figcaption>
+            </figure>
+            <p class="mt-4">
+              Our ViT-VS approach combines Vision Transformer (ViT) correspondence matching with classical image-based visual servoing (IBVS) principles. The methodology addresses key challenges of using pretrained ViTs for robotic control, including rotation invariance compensation and velocity stabilization for smoother trajectories.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Experiments Section -->
+  <section class="section" id="experiments">
+    <div class="container is-max-desktop">
+      <h2 class="title is-3 has-text-centered">Experiments</h2>
+      
+      <!-- Tabs for different experiments -->
+      <div class="tabs is-centered is-boxed">
+        <ul>
+          <li class="is-active" data-target="simulation-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-vr-cardboard"></i></span>
+              <span>Simulation</span>
+            </a>
+          </li>
+          <li data-target="industrial-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-industry"></i></span>
+              <span>Industrial Use-Case</span>
+            </a>
+          </li>
+          <li data-target="positioning-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-robot"></i></span>
+              <span>End-Effector Positioning</span>
+            </a>
+          </li>
+          <li data-target="grasping-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-hand-rock"></i></span>
+              <span>Category-Level Grasping</span>
+            </a>
+          </li>
+        </ul>
+      </div>
+      
+      <!-- Tab content for different experiments -->
+      <div class="tab-contents">
+        <!-- Simulation Experiments -->
+        <div id="simulation-tab" class="tab-content is-active">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Simulation Experiments</h3>
+              <div class="video-container has-text-centered">
+                <video controls class="has-ratio" width="100%">
+                  <source src="static/videos/simulation.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  Our approach achieves full convergence in unperturbed scenarios and surpasses classical image-based visual servoing by up to 31.2% relative improvement in perturbed scenarios. Even the convergence rates of learning-based methods are matched despite requiring no task- or object-specific training.
+                </p>
+                <table class="table is-fullwidth">
+                  <thead>
+                    <tr>
+                      <th>Method</th>
+                      <th>Convergence Rate</th>
+                      <th>End Error</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>ViT-VS (ours)</td>
+                      <td>100.0% / 76.6%</td>
+                      <td>18.62±10.69mm / 1.50±0.78°</td>
+                    </tr>
+                    <tr>
+                      <td>Classical IBVS</td>
+                      <td>89.6% / 58.4%</td>
+                      <td>3.32±1.49mm / 0.25±0.12°</td>
+                    </tr>
+                    <tr>
+                      <td>Deep Learning-based</td>
+                      <td>100.0% / 76.0%</td>
+                      <td>0.04±0.03mm / 0.00±0.00°</td>
+                    </tr>
+                  </tbody>
+                  <caption>Comparison with unperturbed/perturbed scenarios</caption>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Industrial Use-Case -->
+        <div id="industrial-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Industrial Box Manipulation</h3>
+              <div class="video-container has-text-centered">
+                <video controls class="has-ratio" width="100%">
+                  <source src="static/videos/industrial.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  We demonstrate industrial box manipulation with 100% success rate (n = 20) on a mobile robot with a starting point positioning error of ±10cm. This experiment shows the robustness of our approach in real-world industrial scenarios.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- End-Effector Positioning -->
+        <div id="positioning-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">End-Effector Positioning</h3>
+              <div class="video-container has-text-centered">
+                <video controls class="has-ratio" width="100%">
+                  <source src="static/videos/positioning.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  This experiment demonstrates real-world evaluation on the "hollywood poster" for 1500 iterations. We visualize the initial image, the desired image, and the final image along with camera velocities and position and rotation errors, showcasing full convergence from a partially visible and heavily rotated initial position.
+                </p>
+                <figure class="image">
+                  <img src="static/images/positioning_graph.jpg" alt="End-Effector Positioning Experiment">
+                  <figcaption class="has-text-centered mt-2">
+                    Detailed robotic experiment: Camera velocities and pose difference over iterations.
+                  </figcaption>
+                </figure>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Category-Level Grasping -->
+        <div id="grasping-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Category-Level Object Grasping</h3>
+              <div class="video-container has-text-centered">
+                <video controls class="has-ratio" width="100%">
+                  <source src="static/videos/grasping.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  Our method demonstrates robust performance across all object categories, achieving success rates of 100% for shoes, 90% for mugs, and 80% for toy cars. This experiment shows a representative grasping sequence of an unseen blue toy car.
+                </p>
+                <table class="table is-fullwidth">
+                  <thead>
+                    <tr>
+                      <th>Object Category</th>
+                      <th>Success Rate</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>Shoe</td>
+                      <td>10/10 (100%)</td>
+                    </tr>
+                    <tr>
+                      <td>Mug</td>
+                      <td>9/10 (90%)</td>
+                    </tr>
+                    <tr>
+                      <td>Toy Car</td>
+                      <td>8/10 (80%)</td>
+                    </tr>
+                    <tr>
+                      <td><strong>Overall</strong></td>
+                      <td><strong>27/30 (90%)</strong></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Citation Modal -->
+  <div id="citation-modal" class="modal">
+    <div class="modal-background"></div>
+    <div class="modal-card">
+      <header class="modal-card-head">
+        <p class="modal-card-title">Citation</p>
+        <button class="delete" aria-label="close"></button>
+      </header>
+      <section class="modal-card-body">
+        <div class="content">
+          <pre id="bibtex-citation">@article{scherl2025vit,
+  title={ViT-VS: On the Applicability of Pretrained Vision Transformer Features for Generalizable Visual Servoing},
+  author={Scherl, Alessandro and Thalhammer, Stefan and Neuberger, Bernhard and W{\"o}ber, Wilfried and Garc{\'i}a-Rodr{\'i}guez, Jos{\'e}},
+  journal={arXiv preprint arXiv:2503.04545},
+  year={2025}
+}</pre>
+        </div>
+        <button class="button is-info" id="copy-citation">
+          <span class="icon">
+            <i class="fas fa-copy"></i>
+          </span>
+          <span>Copy to Clipboard</span>
+        </button>
+      </section>
+    </div>
+  </div>
 
   <!-- Footer -->
   <footer class="footer">
     <div class="container">
       <div class="content has-text-centered">
         <p>
-          Website template adapted from <a href="https://mega-sam.github.io/">MegaSaM</a>
+          ViT-VS: On the Applicability of Pretrained Vision Transformer Features for Generalizable Visual Servoing
+        </p>
+        <p>
+          <a href="https://alessandroscherl.github.io/ViT-VS/">https://alessandroscherl.github.io/ViT-VS/</a>
         </p>
       </div>
     </div>
