@@ -181,6 +181,12 @@
               <span>Category-Level Grasping</span>
             </a>
           </li>
+          <li data-target="sorting-tab">
+            <a>
+              <span class="icon is-small"><i class="fas fa-sort"></i></span>
+              <span>Category-Level Sorting</span>
+            </a>
+          </li>
         </ul>
       </div>
       
@@ -320,6 +326,35 @@
                     </tr>
                   </tbody>
                 </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Category-Level Sorting -->
+        <div id="sorting-tab" class="tab-content">
+          <div class="columns is-centered">
+            <div class="column is-four-fifths">
+              <h3 class="title is-4">Category-Level Object Sorting</h3>
+              <div class="video-container has-text-centered">
+                <video controls class="has-ratio" width="100%">
+                  <source src="static/videos/sorting.mp4" type="video/mp4">
+                  Your browser does not support the video tag.
+                </video>
+              </div>
+              <div class="content mt-4">
+                <p>
+                  Building on our category-level grasping capabilities, we demonstrate a complete pick-and-place sorting task using only reference images from each category. The system identifies unseen objects from the same categories and successfully sorts them into designated locations with a high success rate.
+                </p>
+                <figure class="image">
+                  <img src="static/images/sorting.jpg" alt="Category-Level Sorting Results">
+                  <figcaption class="has-text-centered mt-2">
+                    Category-level sorting demonstration: Reference objects (left) and unseen objects successfully sorted (right).
+                  </figcaption>
+                </figure>
+                <p>
+                  This experiment highlights the practical application of our ViT-VS approach in a realistic object manipulation scenario, demonstrating how pretrained vision transformers can enable generalized robotic manipulation without task-specific training.
+                </p>
               </div>
             </div>
           </div>
