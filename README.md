@@ -9,9 +9,6 @@
     <a href="https://arxiv.org/abs/2503.04545">
       <img src="https://img.shields.io/badge/Paper-arXiv-red?style=flat-square" alt="arXiv">
     </a>
-    <a href="https://github.com/AlessandroScherl/ViT-VS">
-      <img src="https://img.shields.io/badge/GitHub-Code-green?style=flat-square" alt="GitHub">
-    </a>
   </p>
 </div>
 
@@ -27,11 +24,6 @@ This repository implements Image Based Visual Servoing (IBVS) that combines:
 - DINOv2 Vision Transformer for feature extraction
 - Feature correspondence matching
 - ROS and Gazebo simulation for evaluation
-
-## Paper and Resources
-
-- **Project Page**: [https://alessandroscherl.github.io/ViT-VS/](https://alessandroscherl.github.io/ViT-VS/)
-- **arXiv Preprint**: [ViT-VS: On the Applicability of Pretrained Vision Transformer Features for Generalizable Visual Servoing](https://arxiv.org/abs/2503.04545)
 
 ## Key Features
 
@@ -113,18 +105,6 @@ At this point:
 - Visual Servoing code will begin running
 - Simulation runs according to the config file in catkin_ws/ibvs/config
 
-## Real-World Deployment
-
-For real-world use, you'll need:
-
-- A robot capable of utilizing a velocity controller for the end-effector (servoing)
-- An RGBD camera (we utilized an Intel RealSense D435i)
-
-We utilized:
-- ROS `ur5_twist_controller` from [Universal Robots ROS Driver](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
-- TF2 for calculation of the camera transformation to the TCP
-
-It is recommended to utilize a ROS framework since then it is straightforward to reutilize the ViT-VS code by just turning off the simulation part. Instead of subscribing to the simulated camera topics and sending the velocities to the simulated environment, you would gather data from the real camera and send the calculated velocities to the real robot.
 
 ## Additional Configuration
 
@@ -155,22 +135,36 @@ python3 generate_perturbed_models.py
 ### Viewing Results
 To inspect a .npz file run:
 ```bash
-python3 npzviewer.py results_config_sift_standard.npz
+python3 eval_conv_pose.py.py results_config_sift_standard.npz
 ```
+
+## Real-World Deployment
+
+For real-world use, you'll need:
+
+- A robot capable of utilizing a velocity controller for the end-effector (servoing)
+- An RGBD camera (we utilized an Intel RealSense D435i)
+
+We utilized:
+- ROS `ur5_twist_controller` from [Universal Robots ROS Driver](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
+- TF2 for calculation of the camera transformation to the TCP
+
+It is recommended to utilize a ROS framework since then it is straightforward to reutilize the ViT-VS code by just turning off the simulation part. Instead of subscribing to the simulated camera topics and sending the velocities to the simulated environment, you would gather data from the real camera and send the calculated velocities to the real robot.
+
 
 ## Acknowledgments
 
-We would like to express our gratitude to the DINOv2 team for their excellent work on self-supervised vision transformers. Our approach leverages their pretrained models for feature extraction, which has been essential to the success of our visual servoing method.
+We would like to express our gratitude to the [DINOv2](https://github.com/facebookresearch/dinov2) team for their excellent work on self-supervised vision transformers.
 
 ## Citation
 
 If you find this work useful for your research, please cite our paper:
 
 ```bibtex
-@article{scherl2024vitvs,
+@article{scherl2025vit-vs,
   title={ViT-VS: On the Applicability of Pretrained Vision Transformer Features for Generalizable Visual Servoing},
   author={Scherl, Alessandro and Thalhammer, Stefan and Neuberger, Bernhard and W\"{o}ber, Wilfried and Garc\'ia-Rodr\'iguez, Jos\'e},
   journal={arXiv preprint arXiv:2503.04545},
-  year={2024}
+  year={2025}
 }
 ```
