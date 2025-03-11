@@ -1,0 +1,11 @@
+exclude:
+  - catkin_ws/
+  - buildandrun.sh
+  - Dockerfile*
+  - scripts/
+  - "*.sh"
+  - "*.launch"
+  - "*.yaml"
+  - LICENSE
+  - "*.md"
+  - README.md
