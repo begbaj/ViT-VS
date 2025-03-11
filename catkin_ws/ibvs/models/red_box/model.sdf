@@ -1,0 +1,20 @@
+<?xml version="1.0" ?>
+<sdf version="1.6">
+  <model name="red_box">
+    <static>true</static>
+    <link name="link">
+      <visual name="visual">
+        <geometry>
+          <box>
+            <size>0.005 0.005 0.005</size> <!-- Size of the box -->
+          </box>
+        </geometry>
+        <material>
+          <ambient>1 0 0 1</ambient> <!-- Red color -->
+          <diffuse>1 0 0 1</diffuse>
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>
+

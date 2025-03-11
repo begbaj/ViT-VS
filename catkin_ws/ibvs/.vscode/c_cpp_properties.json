@@ -1,0 +1,51 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/alessandro/aruco_recognition/devel/include/**",
+        "/home/alessandro/catkin_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/alessandro/aruco_recognition/src/ar_track_alvar/ar_track_alvar/include/**",
+        "/home/alessandro/aruco_recognition/src/aruco_ros/aruco/include/**",
+        "/home/alessandro/aruco_recognition/src/aruco_ros/aruco_ros/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_planners/chomp/chomp_motion_planner/include/**",
+        "/home/alessandro/aruco_recognition/src/fiducials/fiducial_slam/include/**",
+        "/home/alessandro/catkin_ws/src/geometric_shapes/include/**",
+        "/home/alessandro/aruco_recognition/src/ibvs/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_planners/chomp/chomp_interface/include/**",
+        "/home/alessandro/catkin_ws/src/moveit_resources/prbt_ikfast_manipulator_plugin/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_ros/benchmarks/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_plugins/moveit_ros_control_interface/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_ros/move_group/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_ros/occupancy_map_monitor/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_ros/robot_interaction/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_ros/moveit_servo/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_setup_assistant/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_plugins/moveit_simple_controller_manager/include/**",
+        "/home/alessandro/catkin_ws/src/moveit_visual_tools/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_planners/pilz_industrial_motion_planner/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_planners/pilz_industrial_motion_planner_testutils/include/**",
+        "/home/alessandro/catkin_ws/src/realsense-ros/realsense2_camera/include/**",
+        "/home/alessandro/aruco_recognition/src/realsense_gazebo_plugin/include/**",
+        "/home/alessandro/catkin_ws/src/rviz_visual_tools/include/**",
+        "/home/alessandro/catkin_ws/src/moveit/moveit_planners/sbpl/core/sbpl_interface/include/**",
+        "/home/alessandro/catkin_ws/src/srdfdom/include/**",
+        "/home/alessandro/aruco_recognition/src/fiducials/stag_detect/include/**",
+        "/home/alessandro/catkin_ws/src/ur5_custom_viso/include/**",
+        "/home/alessandro/catkin_ws/src/universal_robot/ur_kinematics/include/**",
+        "/home/alessandro/aruco_recognition/src/vision_msgs/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
