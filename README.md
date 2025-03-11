@@ -23,7 +23,7 @@ ViT-VS is a visual servoing approach that leverages pretrained vision transforme
 This repository implements Image Based Visual Servoing (IBVS) that combines:
 - DINOv2 Vision Transformer for feature extraction
 - Feature correspondence matching
-- ROS and Gazebo simulation for evaluation
+- ROS and Gazebo simulation for evaluation setup in a Docker container
 
 ## Key Features
 
@@ -32,11 +32,6 @@ This repository implements Image Based Visual Servoing (IBVS) that combines:
 - Category-level object manipulation capabilities
 - Zero-shot approach (no task-specific training needed)
 
-## System Requirements
-
-- Ubuntu/Linux
-- Docker
-- NVIDIA Container Toolkit
 
 ## Prerequisites
 
