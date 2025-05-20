@@ -21,7 +21,7 @@ ViT-VS is a visual servoing approach that leverages pretrained vision transforme
 - **Category-level Generalization**: Works with unseen objects from same category
 
 
-## Prerequisites for Running Vit-VS in Simulation (ROS1+GAZEBO)
+## Prerequisites for Running Vit-VS in Simulation (Docker:ROS1+GAZEBO)
 
 1. **Install Docker**
    - Follow the official guide: [Docker Installation](https://docs.docker.com/engine/install/)
