@@ -93,7 +93,7 @@ At this point:
 For real-world use, you'll need:
 
 - A robot capable of utilizing a velocity controller for the end-effector (servoing)
-- An RGBD camera mounted on the endeffector
+- A RGBD camera mounted on the endeffector
 - Preferably a Nvidia GPU
 
 We utilized:
