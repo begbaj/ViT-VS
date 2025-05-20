@@ -21,14 +21,6 @@ ViT-VS is a visual servoing approach that leverages pretrained vision transforme
 - **Category-level Generalization**: Works with unseen objects from same category
 
 
-## Key Features
-
-- 100% convergence rate in unperturbed scenarios
-- 31.2% relative improvement over classical IBVS in perturbed scenarios
-- Category-level object manipulation capabilities
-- Zero-shot approach (no task-specific training needed)
-
-
 ## Prerequisites for Running Vit-VS in Simulation (ROS1+GAZEBO)
 
 1. **Install Docker**
