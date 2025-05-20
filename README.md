@@ -93,9 +93,11 @@ At this point:
 For real-world use, you'll need:
 
 - A robot capable of utilizing a velocity controller for the end-effector (servoing)
-- An RGBD camera (we utilized an Intel RealSense D435i)
+- An RGBD camera mounted on the endeffector
+- Preferably a Nvidia GPU
 
 We utilized:
+- An Intel RealSense D435i
 - ROS `ur5_twist_controller` from [Universal Robots ROS Driver](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
 - TF2 for calculation of the camera transformation to the TCP
 
