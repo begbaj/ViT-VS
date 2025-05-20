@@ -88,6 +88,19 @@ At this point:
 - Visual Servoing code will begin running
 - Simulation runs according to the config file in catkin_ws/ibvs/config
 
+## Real-World Deployment
+
+For real-world use, you'll need:
+
+- A robot capable of utilizing a velocity controller for the end-effector (servoing)
+- An RGBD camera (we utilized an Intel RealSense D435i)
+
+We utilized:
+- ROS `ur5_twist_controller` from [Universal Robots ROS Driver](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
+- TF2 for calculation of the camera transformation to the TCP
+
+It is recommended to utilize a ROS framework since then it is straightforward to reutilize the ViT-VS code by just turning off the simulation part. Instead of subscribing to the simulated camera topics and sending the velocities to the simulated environment, you would gather data from the real camera and send the calculated velocities to the real robot.
+
 
 ## Additional Configuration
 
@@ -103,11 +116,6 @@ cd catkin_ws/src/ibvs/src
 - Open catkin_ws/ibvs/launch/ibvs.launch
 - Set the argument "gui" to true
 
-### Connecting to Docker Container
-```bash
-docker exec -ti viso bash
-```
-
 ### Working with Perturbed Models
 Create the perturbed models:
 ```bash
@@ -120,20 +128,6 @@ To inspect a .npz file run:
 ```bash
 python3 eval_conv_pose.py.py results_config_sift_standard.npz
 ```
-
-## Real-World Deployment
-
-For real-world use, you'll need:
-
-- A robot capable of utilizing a velocity controller for the end-effector (servoing)
-- An RGBD camera (we utilized an Intel RealSense D435i)
-
-We utilized:
-- ROS `ur5_twist_controller` from [Universal Robots ROS Driver](https://github.com/UniversalRobots/Universal_Robots_ROS_Driver)
-- TF2 for calculation of the camera transformation to the TCP
-
-It is recommended to utilize a ROS framework since then it is straightforward to reutilize the ViT-VS code by just turning off the simulation part. Instead of subscribing to the simulated camera topics and sending the velocities to the simulated environment, you would gather data from the real camera and send the calculated velocities to the real robot.
-
 
 ## Acknowledgments
 
