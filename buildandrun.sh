@@ -14,7 +14,7 @@ udevadm control --reload-rules && udevadm trigger
 
 # Build Docker image
 echo "Building Docker image..."
-docker build . -t viso_sim
+docker build . --no-cache -t viso_sim
 
 # Choose one of the following run commands:
 
@@ -27,7 +27,8 @@ docker run -it --rm -t -d \
     --runtime=nvidia \
     --gpus all \
     -p 8888:8888 \
-    --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+    --volume="/tmp/.X11-unix-cv2425g26:/tmp/.X11-unix:rw" \
+    -v $HOME/.Xauthority:/root/.Xauthority:ro \
     --mount src="$(pwd)/catkin_ws",target=/root/catkin_ws/src/,type=bind \
     viso_sim
 
@@ -38,7 +39,8 @@ docker run -it --rm -t -d \
 #     -e DISPLAY=$DISPLAY \
 #     --privileged \
 #     -p 8888:8888 \
-#     --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+#     -v /tmp/.X11-unix:/tmp/.X11-unix:rw \
+#     -v $HOME/.Xauthority:/root/.Xauthority:ro \
 #     --mount src="$(pwd)/catkin_ws",target=/root/catkin_ws/src/,type=bind \
 #     viso_sim
 

@@ -11,7 +11,7 @@
 FROM ubuntu:20.04
 
 # Metadata
-MAINTAINER Alessandro Scherl (alessandro.scherl@technikum-wien.at)
+LABEL maintainer="Alessandro Scherl <alessandro.scherl@technikum-wien.at>"
 
 # Environment setup
 ENV DEBIAN_FRONTEND=noninteractive
@@ -64,3 +64,4 @@ RUN echo "source /root/catkin_ws/devel/setup.bash" >> ~/.bashrc && \
 
 # Install additional dependencies
 RUN pip install git+https://github.com/lucasb-eyer/pydensecrf.git
+RUN ln -s /usr/bin/python3 /usr/bin/python

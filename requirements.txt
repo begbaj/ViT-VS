@@ -1,14 +1,15 @@
-jupyterlab
-opencv-python
+# Core tools
+jupyterlab>=3.0,<4.0
+opencv-python>=4.5,<5.0
 numpy==1.21.6
-#cython
+pandas>=1.3,<2.0
+scipy>=1.7,<1.10
+tqdm>=4.60,<5.0
+scikit-learn>=0.24,<1.2
+timm==0.6.12 
+
+# ROS tools (must be used in ROS environment)
 rosdep
 rosinstall
 vcstools
 rospkg
-pandas
-scipy
-tqdm
-#faiss-cpu
-timm
-scikit-learn
