@@ -123,7 +123,7 @@ class Controller:
 
         # Initialize ROS
         if not rospy.get_node_uri():
-            rospy.init_node('ibvs_controller', anonymous=True)
+            rospy.init_node('ibvs_controller', anonymous=True, log_level=rospy.DEBUG)
 
         # Initialize ROS communication
         self.bridge = CvBridge()

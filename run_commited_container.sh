@@ -14,20 +14,19 @@ xhost +local:docker
 udevadm control --reload-rules && udevadm trigger
 
 # Run Docker container with GPU support
-echo "Starting Docker container..."
 docker run -it --rm -t -d \
     --name viso_sim \
     --network="host" \
     -e DISPLAY=$DISPLAY \
     --privileged \
     --runtime=nvidia \
+    --gpus '"device=0",capabilities=utility' \
     -p 8888:8888 \
-    --gpus all \
-    --volume="/tmp/.X11-unix:/tmp/.X11-unix:rw" \
+    --volume="/tmp/.X11-unix-cv2425g26:/tmp/.X11-unix:rw" \
+    -v $HOME/.Xauthority:/root/.Xauthority:ro \
+    -v ./log/:/root/.ros/:rw \
     --mount src="$(pwd)/catkin_ws",target=/root/catkin_ws/src/,type=bind \
-    --device=/dev/bus/usb/001/003:/dev/bus/usb/001/003 \
-    -v /dev:/dev \
-    viso_sim:latest
+    viso_sim
 
 # Connect to container
 echo "Connecting to container..."

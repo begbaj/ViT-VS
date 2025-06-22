@@ -5,6 +5,7 @@ usage() {
     echo "Usage: $0 --method <sift|orb|akaze|dino> [--config <config_file>] [--perturbation]"
     echo "Options:"
     echo "  --method        Specify the feature detection method (sift, orb, akaze, or dino)"
+    echo "  --launch        Specify the .launch to run (check launch/ directory for available options, default: ibvs.launch)"
     echo "  --config        Optional: Specify the configuration file (default: config.yaml)"
     echo "  --perturbation  Optional: Enable perturbation mode"
     exit 1
@@ -33,14 +34,23 @@ run_configuration() {
     
     # Ensure clean slate before starting
     kill_ros_and_gazebo
-    
+
     # Start roslaunch
-    roslaunch ibvs ibvs.launch &
+    DISABLE_ROS1_EOL_WARNINGS=1 roslaunch ibvs $LAUNCH &
     ROSLAUNCH_PID=$!
-    
-    # Wait for 5 seconds to ensure everything is up
+    # ROSLAUNCH_PID=$!
+
+    # Wait for 30 seconds to ensure everything is up
     echo "Waiting for ROS and Gazebo to initialize..."
-    sleep 5
+    sleep 30
+
+    echo "-----ROSTOPIC LIST-----"
+    echo ""
+
+    rostopic list
+
+    echo ""
+    echo "-----ROSTOPIC LIST-----"
     
     # Run Python script based on method
     echo "Starting visual servoing..."
@@ -74,11 +84,16 @@ run_configuration() {
 METHOD=""
 CONFIG="config.yaml"  # Default configuration file
 PERTURBATION=false    # Default perturbation setting
+LAUNCH="ibvs.launch"  # Default launch file
 
 while [[ $# -gt 0 ]]; do
     case $1 in
         --method)
             METHOD="$2"
+            shift 2
+            ;;
+        --launch)
+            LAUNCH="$2"
             shift 2
             ;;
         --config)
