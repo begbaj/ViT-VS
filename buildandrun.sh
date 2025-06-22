@@ -14,9 +14,11 @@ udevadm control --reload-rules && udevadm trigger
 
 # Build Docker image
 echo "Building Docker image..."
-docker build . --no-cache -t viso_sim
+docker build -t viso_sim .
 
 # Choose one of the following run commands:
+
+docker exec -it viso_sim bash -c "catkin_make -C /root/catkin_ws && source /root/catkin_ws/devel/setup.bash"
 
 # 1. Run with GPU support:
 docker run -it --rm -t -d \

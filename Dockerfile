@@ -29,6 +29,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
+
+
 # Upgrade pip and install Python requirements
 RUN pip3 install --upgrade pip
 COPY requirements.txt .
@@ -65,3 +67,5 @@ RUN echo "source /root/catkin_ws/devel/setup.bash" >> ~/.bashrc && \
 # Install additional dependencies
 RUN pip install git+https://github.com/lucasb-eyer/pydensecrf.git
 RUN ln -s /usr/bin/python3 /usr/bin/python
+
+# Remember to manually run "catkin_make" in the container after building it

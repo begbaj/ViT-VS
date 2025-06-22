@@ -13,6 +13,8 @@ echo "Setting up X server access and USB devices..."
 xhost +local:docker
 udevadm control --reload-rules && udevadm trigger
 
+docker exec -it viso_sim bash -c "catkin_make -C /root/catkin_ws && source /root/catkin_ws/devel/setup.bash"
+
 # Run Docker container with GPU support
 docker run -it --rm -t -d \
     --name viso_sim \
